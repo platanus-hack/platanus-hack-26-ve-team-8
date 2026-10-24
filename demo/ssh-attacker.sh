@@ -17,8 +17,16 @@ OPTS="-o ConnectTimeout=3 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev
 for user in admin root test oracle postgres ubuntu guest support; do
   # BatchMode no pide contraseña: cada intento falla y sshd lo registra con la IP de este equipo.
   # shellcheck disable=SC2086
-  ssh $OPTS -o BatchMode=yes "$user@$HOST" true 2>/dev/null || true
-  echo "Intento fallido como $user"
+  if error=$(ssh $OPTS -o BatchMode=yes "$user@$HOST" true 2>&1); then
+    echo "Acceso concedido como $user"
+  else
+    case "$error" in
+      *"Permission denied"*|*"Too many authentication failures"*) echo "Intento fallido como $user" ;;
+      *) echo "No se llegó a sshd en $HOST:22: $error"
+         echo "Activa Inicio de sesión remoto en el Mac atacado y comprueba que ambos están en la misma red."
+         exit 1 ;;
+    esac
+  fi
   sleep 1
 done
 
