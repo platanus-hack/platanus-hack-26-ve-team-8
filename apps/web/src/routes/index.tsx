@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 
 const REPO = 'https://github.com/chrisdadev13/arkangel'
-const DOWNLOAD = `${REPO}/releases/latest`
+// Stable link to the newest release asset; publish new builds with the same file name.
+const DOWNLOAD = `${REPO}/releases/latest/download/Arkangel.dmg`
 
 export const Route = createFileRoute('/')({ component: Home })
 
@@ -66,7 +67,11 @@ function Home() {
             Ver en GitHub
           </a>
         </div>
-        <p className="note">macOS 15+ · Versión preliminar para desarrollo</p>
+        <p className="note">macOS 15+ · Apple Silicon · Versión preliminar para desarrollo</p>
+        <p className="note">
+          Primera apertura: la app aún no está notarizada. Ábrela, ve a Ajustes del Sistema → Privacidad y
+          seguridad y pulsa «Abrir igualmente».
+        </p>
       </header>
 
       <section>

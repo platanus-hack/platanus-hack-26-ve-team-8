@@ -51,6 +51,13 @@ open .guardian/Arkangel.app
 bash scripts/build-dmg.sh
 ```
 
+Para publicarlo en la web, sube el DMG como release; el botón de descarga apunta a
+`releases/latest/download/Arkangel.dmg`, así que conserva ese nombre de archivo:
+
+```sh
+gh release create v0.3.0 .guardian/Arkangel.dmg --title "Arkangel 0.3.0"
+```
+
 ## Organización del espacio de trabajo
 
 Resumen es la pantalla inicial: reúne el estado de vigilancia, métricas con acceso
