@@ -17,6 +17,9 @@ cd apps/macos
 swift run Guardian
 ```
 
+Al iniciarse, la app debe aparecer en el Dock y mostrar el panel de Arkangel, también
+cuando se ejecuta con `swift run` sin un bundle `.app`.
+
 `swift run` compila como parte del lanzamiento. La validación durante el desarrollo usa
 la comprobación de tipos en lugar de compilar el proyecto:
 

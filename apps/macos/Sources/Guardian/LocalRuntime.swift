@@ -91,10 +91,16 @@ final class GuardianAppDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
     let model = GuardianModel()
     private weak var dashboardWindow: NSWindow?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Unbundled executables launched by swift run default to background-only apps.
+        NSApplication.shared.setActivationPolicy(.regular)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }
         dashboardWindow = NSApplication.shared.windows.first { $0.canBecomeMain }
         dashboardWindow?.delegate = self
+        showDashboard()
         model.startPolling()
     }
 
