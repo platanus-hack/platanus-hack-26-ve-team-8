@@ -30,6 +30,7 @@ private enum OverviewDetail: String, Identifiable {
 
 struct Dashboard: View {
     @Bindable var model: GuardianModel
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var selection: Page? = .overview
     @State private var filter = ""
     @State private var kindFilter: String?
@@ -120,51 +121,110 @@ struct Dashboard: View {
     // MARK: Sidebar
 
     private var sidebar: some View {
-        List(selection: $selection) {
-            Section("Espacio de trabajo") {
-                ForEach([Page.overview, .live, .alerts]) { navItem($0) }
-            }
-            Section("Evidencia") {
-                ForEach([Page.observations, .investigations]) { navItem($0) }
-            }
-        }
-        .listStyle(.sidebar)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 10) {
-                BrandMark(size: 28)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Arkangel").font(.headline)
+                BrandMark(size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Arkangel").font(.system(size: 25, weight: .medium, design: .serif))
                     Text("Investigador de este Mac").font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
+            .padding(.top, 12)
+            ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        StatusDot(color: connection.color)
-                        Text(connection.title).font(.callout.weight(.medium))
-                    }
-                    Text(model.status?.monitoring == true ? "Recolección local de solo lectura" : "Tu evidencia permanece en este Mac")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Configurar investigador…") { model.setupVisible = true }
-                        .buttonStyle(.link).font(.caption).padding(.top, 2)
+                    navGroup("ESPACIO DE TRABAJO", pages: [.overview, .live, .alerts])
+                    Text("EVIDENCIA").font(.system(size: 10, weight: .semibold)).tracking(1.4)
+                        .foregroundStyle(.secondary).padding(.top, 24).padding(.bottom, 6).padding(.leading, 12)
+                    ForEach([Page.observations, .investigations]) { navItem($0) }
                 }
-                .padding(16)
             }
+            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    StatusDot(color: connection.color)
+                    Text(connection.title).font(.callout.weight(.medium))
+                }
+                Text(model.status?.monitoring == true ? "Recolección local de solo lectura" : "Tu evidencia permanece en este Mac")
+                    .font(.caption).foregroundStyle(.secondary)
+                Hairline()
+                Button { model.setupVisible = true } label: {
+                    HStack {
+                        Image(systemName: "slider.horizontal.3")
+                        Text("Configurar investigador")
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption2)
+                    }
+                    .font(.callout).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(14)
+            .background {
+                if reduceTransparency {
+                    RoundedRectangle(cornerRadius: 18).fill(Color.surface)
+                } else {
+                    RoundedRectangle(cornerRadius: 18).fill(.ultraThinMaterial)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.12)))
         }
-        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
+        .padding(20)
+        .background {
+            GeometryReader { _ in
+                ZStack {
+                    Color(red: 0.035, green: 0.075, blue: 0.12)
+                    if !reduceTransparency {
+                        Circle().fill(Color.info.opacity(0.42)).frame(width: 280, height: 280).blur(radius: 85).offset(x: -100, y: -200)
+                        Circle().fill(Color.teal.opacity(0.2)).frame(width: 280, height: 280).blur(radius: 80).offset(x: 120, y: 250)
+                        Rectangle().fill(.ultraThinMaterial).opacity(0.3)
+                    }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+            }.ignoresSafeArea()
+        }
+        .foregroundStyle(.white)
+        .environment(\.colorScheme, .dark)
+        .navigationSplitViewColumnWidth(min: 246, ideal: 264, max: 300)
+    }
+
+    private func navGroup(_ title: String, pages: [Page]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(size: 10, weight: .semibold)).tracking(1.4)
+                .foregroundStyle(.secondary).padding(.leading, 12).padding(.bottom, 6)
+            ForEach(pages) { navItem($0) }
+        }
     }
 
     private func navItem(_ destination: Page) -> some View {
+        let selected = page == destination
         let count = destination == .alerts ? (model.status?.alerts?.unacknowledged ?? 0)
             : destination == .investigations ? model.investigations.count : 0
-        return Label(destination.rawValue, systemImage: destination.symbol)
-            .badge(count)
-            .tag(destination)
+        return Button { selection = destination } label: {
+            HStack(spacing: 12) {
+                Image(systemName: destination.symbol).font(.system(size: 15)).frame(width: 20)
+                    .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
+                Text(destination.rawValue).font(.system(size: 14, weight: selected ? .semibold : .regular))
+                Spacer()
+                if count > 0 {
+                    Text(count.formatted()).font(.caption2.weight(.semibold)).monospacedDigit()
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Color.info.opacity(0.14), in: Capsule())
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 11)
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.white.opacity(0.09))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(.white.opacity(0.1))
+                        }
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var workspaceHeader: some View {
