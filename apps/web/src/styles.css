@@ -1,0 +1,89 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0b0d12;
+  --card: #141821;
+  --border: #252b38;
+  --text: #e8ebf2;
+  --muted: #9aa3b5;
+  --accent: #7c9cff;
+  --on-accent: #0b0d12;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e2e5ec;
+    --text: #151922;
+    --muted: #5b6475;
+    --accent: #3f5fe0;
+    --on-accent: #ffffff;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+a { color: var(--accent); }
+h1, h2, h3 { line-height: 1.2; margin: 0 0 12px; }
+p { margin: 0 0 12px; color: var(--muted); }
+
+.hero { text-align: center; padding: 96px 0 64px; }
+.hero img { border-radius: 22px; }
+.hero h1 { font-size: clamp(40px, 7vw, 64px); letter-spacing: -0.03em; margin-top: 16px; }
+.lead { font-size: 20px; max-width: 640px; margin: 0 auto 32px; }
+.note { font-size: 14px; margin-top: 16px; }
+
+.cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.button {
+  padding: 12px 24px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+.button:hover { border-color: var(--muted); }
+.button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.button.primary:hover { filter: brightness(1.1); }
+.button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+section { padding: 48px 0; border-top: 1px solid var(--border); }
+section h2 { font-size: 28px; margin-bottom: 24px; }
+
+.steps, .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.steps { list-style: none; padding: 0; margin: 0; }
+.steps li, .grid article {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+}
+.num {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+pre {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  overflow-x: auto;
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+.figure { display: block; width: 100%; border: 0; }
+
+footer { text-align: center; padding: 48px 0; color: var(--muted); border-top: 1px solid var(--border); }

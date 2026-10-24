@@ -219,6 +219,11 @@ struct Dashboard: View {
     private var overview: some View {
         VStack(alignment: .leading, spacing: 20) {
             if model.status != nil || !model.needsSetup { hero }
+            AnatomyView(state: model.status.map { status in
+                AnatomyState(connected: true, monitoring: status.monitoring, observations: status.observation_count,
+                             investigating: model.investigating, steps: model.investigations.first?.steps.count ?? 0,
+                             findings: model.investigations.count)
+            }).frame(height: 380)
             if let status = model.status {
                 HStack(spacing: 12) {
                     metric("Observaciones registradas", status.observation_count.formatted())

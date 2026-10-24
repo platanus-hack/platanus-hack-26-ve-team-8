@@ -7,3 +7,9 @@ __pycache__/
 *.sqlite3*
 *.sock
 .guardian/
+node_modules/
+dist/
+.output/
+.tanstack/
+.nitro/
+apps/web/src/routeTree.gen.ts

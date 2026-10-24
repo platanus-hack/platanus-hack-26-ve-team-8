@@ -7,6 +7,8 @@ prototipo temprano, no un antivirus validado ni un monitor de endpoints completo
 ## Monorepo
 
 - `apps/macos`: app nativa de SwiftUI para la barra de menús y cliente de socket Unix.
+- `apps/web`: landing page con TanStack Start (`npm install && npm run dev:web` desde la raíz).
+- `packages/figure`: la figura interactiva "Anatomy of an investigation" compartida por ambos clientes. `node packages/figure/build.mjs` regenera `apps/web/public/anatomy.html` y `apps/macos/Sources/Guardian/AnatomyFigure.swift`.
 - `services/agent`: servicio local en Python, historial en SQLite, recolectores e investigación guiada por modelo.
 - `packages/contracts`: contrato compartido de la API local.
 - `docs`: arquitectura y límites operativos.
