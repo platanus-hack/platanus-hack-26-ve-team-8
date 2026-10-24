@@ -1,4 +1,4 @@
-# Guardian
+# Arkangel
 
 A macOS defensive investigator: local observations, an AI that chooses evidence
 queries, and a native interface for reviewing findings. This is an early prototype,
