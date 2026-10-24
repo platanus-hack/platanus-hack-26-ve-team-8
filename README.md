@@ -130,6 +130,9 @@ un servicio lanzado externamente.
 
 ## Verificación
 
+See the [testing README](docs/testing/README.md) for a repeatable local smoke test,
+the colleague/attacker exercise, and separate detection and prevention criteria.
+
 ```sh
 PYTHONPATH=services/agent/src .venv/bin/python -m unittest discover -s services/agent/tests -v
 ```
