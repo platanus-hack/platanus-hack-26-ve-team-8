@@ -70,8 +70,14 @@ firewall tiene firewall_enabled y stealth_mode. Una observación `tcp_connection
 `tcp_connections`) es una conexión TCP establecida desde otro equipo hacia un puerto local
 en escucha; se omiten loopback, las salientes y las del propio Mac a su IP. Atributos:
 pid, executable, direction ("inbound"), local_address, local_port, remote_address,
-remote_port y remote_scope ("lan"|"public"). Sin root solo se ven procesos del usuario.
-La nube recibe local_port, remote_port, remote_scope y direction, nunca remote_address.
+remote_port y remote_scope ("lan"|"public"). lsof ve los procesos del usuario y netstat
+añade los sockets de otros usuarios (como el sshd de root de Inicio de sesión remoto) en
+las mismas fuentes `tcp_listeners` y `tcp_connections`. La fuente `ssh_logins` produce una
+`tcp_connection` por equipo con intentos de SSH fallidos en el registro del sistema de los
+últimos dos minutos: executable "sshd", local_port 22, sin remote_port ni pid, y
+auth_failures int (intentos distintos). El usuario probado no se guarda. block_peer la acepta
+igual que cualquier tcp_connection.
+La nube recibe local_port, remote_port, auth_failures, remote_scope y direction, nunca remote_address.
 
 Cargas de ejemplo: fixtures.json. services/agent/tests/test_contract.py comprueba la
 salida de Python contra ese archivo; mantenlo sincronizado con los modelos de Swift en

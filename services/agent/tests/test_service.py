@@ -105,6 +105,25 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.dispatch({"method": "defense.apply", "params": {"action": "open_port", "port": 22}})
 
+    def test_ssh_brute_force_alerts_once_and_can_be_blocked(self):
+        def failures(identifier, count):
+            return {"id": identifier, "timestamp": datetime.now(timezone.utc).isoformat(), "kind": "tcp_connection",
+                    "source": "ssh_logins", "entity": "ssh:192.168.1.9", "summary": "Intentos de acceso SSH fallidos desde la red",
+                    "attributes": {"executable": "sshd", "direction": "inbound", "local_port": 22,
+                                   "remote_address": "192.168.1.9", "remote_scope": "lan", "auth_failures": count}}
+        coverage = [{"source": "ssh_logins", "status": "partial", "detail": "Snapshot only"}]
+        snapshots = [[observation()], [failures("s1", 3)], [failures("s2", 9)]]
+        self.service.collector = lambda: (snapshots.pop(0) if snapshots else [], coverage)
+        for _ in range(3):
+            self.service.scan()
+        alerts = self.store.alerts()
+        # More guesses from the same device update the evidence without a new alert.
+        self.assertEqual([(a["signal"]["attributes"]["rule"], a["after"]["id"]) for a in alerts], [("inbound_connection", "s1")])
+        with patch("guardian.service.defense.block_peer") as block:
+            status = self.service.dispatch({"method": "defense.apply", "params": {"action": "block_peer", "observation_id": "s1"}})
+        block.assert_called_once_with("192.168.1.9")
+        self.assertEqual(status["blocked_peers"], ["192.168.1.9"])
+
     def test_inbound_peer_alerts_once_and_can_be_blocked(self):
         def connection(identifier, remote_port, remote="192.168.1.9"):
             return {"id": identifier, "timestamp": datetime.now(timezone.utc).isoformat(), "kind": "tcp_connection",

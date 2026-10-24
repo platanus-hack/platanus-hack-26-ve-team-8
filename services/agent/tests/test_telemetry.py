@@ -54,6 +54,40 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual({k: items[0]["attributes"][k] for k in ("pid", "executable", "local_port", "remote_port", "direction")},
                          {"pid": 40, "executable": "postgres", "local_port": 5432, "remote_port": 51022, "direction": "inbound"})
 
+    def test_netstat_reveals_root_sshd_sockets(self):
+        output = (
+            "Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)          rxbytes      txbytes  rhiwat  shiwat          process:pid    state  options\n"
+            "tcp4       0      0  *.22                   *.*                    LISTEN                 0            0  131072  131072        launchd:1    00100 00000006 0000000000000001 00000000 00000800      1      0 000000\n"
+            "tcp4       0      0  192.168.1.4.22         192.168.1.9.51022      ESTABLISHED         9062         4928  131072  131396 sshd-session:900  00102 00000008 0000000000641572 00000000 04000900      2      0 000000\n"
+            "tcp6       0      0  fe80::1%en0.22         fe80::2%en0.51023      ESTABLISHED            1            1  131072  131072 sshd-session:901  00102 00000008 0000000000641573 00000000 04000900      2      0 000000\n"
+            "tcp4       0      0  192.168.1.4.5432       192.168.1.9.51024      ESTABLISHED            1            1  131072  131072      postgres:40    00102 00000008 0000000000641574 00000000 04000900      2      0 000000\n"
+            "tcp4       0      0  10.0.0.4.49885         140.82.114.5.443       ESTABLISHED            1            1  131072  131072 Google Chrome He:78887  00102 00000008 0000000000641575 00000000 04000900      2      0 000000\n")
+        listeners = telemetry.parse_listeners(telemetry.netstat_as_lsof(output, "LISTEN", set()))
+        self.assertEqual([(i["attributes"]["executable"], i["attributes"]["port"], i["attributes"]["bind_scope"]) for i in listeners],
+                         [("launchd", 22, "any")])
+        # pid 40 is ours, so lsof already reported it.
+        items = telemetry.parse_connections(telemetry.netstat_as_lsof(output, "ESTABLISHED", {40}), {22, 5432})
+        self.assertEqual([(i["attributes"]["executable"], i["attributes"]["pid"], i["attributes"]["local_port"], i["attributes"]["remote_address"])
+                          for i in items], [("sshd-session", 900, 22, "192.168.1.9"), ("sshd-session", 901, 22, "fe80::2")])
+        self.assertEqual(telemetry.netstat_as_lsof(output, "ESTABLISHED", set()).count("cGoogle Chrome He"), 1)
+
+    def test_ssh_failures_count_attempts_per_peer_without_usernames(self):
+        output = ("Timestamp               Ty Process[PID:TID]\n"
+                  "2026-10-24 18:00:01.0 Df sshd-session[900:1] Invalid user admin from 192.168.1.9 port 51022\n"
+                  "2026-10-24 18:00:01.1 Df sshd-session[900:1] Connection closed by invalid user admin 192.168.1.9 port 51022 [preauth]\n"
+                  # The attacker picks the username; the address sshd appends last is the real one.
+                  "2026-10-24 18:00:02.0 Df sshd-session[901:1] Failed password for invalid user x from 10.0.0.5 port 1 from 192.168.1.9 port 51023 ssh2\n"
+                  "2026-10-24 18:00:03.0 Df sshd-session[902:1] Failed keyboard-interactive/pam for mac from 8.8.8.8 port 40000 ssh2\n"
+                  "2026-10-24 18:00:04.0 Df sshd-session[903:1] Invalid user root from 127.0.0.1 port 50000\n"
+                  "2026-10-24 18:00:05.0 Df sshd-session[904:1] Accepted publickey for mac from 192.168.1.20 port 50001 ssh2\n")
+        items = telemetry.parse_ssh_failures(output)
+        self.assertEqual([(i["attributes"]["remote_address"], i["attributes"]["remote_scope"], i["attributes"]["auth_failures"]) for i in items],
+                         [("192.168.1.9", "lan", 2), ("8.8.8.8", "public", 1)])
+        self.assertEqual({k: items[0]["attributes"][k] for k in ("executable", "local_port", "direction")},
+                         {"executable": "sshd", "local_port": 22, "direction": "inbound"})
+        self.assertEqual(items[0]["kind"], "tcp_connection")
+        self.assertNotIn("admin", str(items))
+
     def test_firewall_state(self):
         off = telemetry.parse_firewall("Firewall is disabled. (State = 0)\nFirewall stealth mode is off\n")
         on = telemetry.parse_firewall("Firewall is enabled. (State = 1)\nFirewall stealth mode is on\n")
@@ -102,10 +136,10 @@ class TelemetryTests(unittest.TestCase):
         with patch.object(telemetry.platform, "system", return_value="Darwin"), patch.object(telemetry.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")) as run, patch.object(telemetry, "_launch_agents", return_value=([], {"source": "user_launch_agents", "status": "partial", "detail": "fixture"})), patch.object(telemetry.shutil, "which", return_value=None):
             items, coverage = telemetry.collect_snapshot()
         self.assertEqual(items, [])
-        self.assertEqual(len(coverage), 6)
+        self.assertEqual(len(coverage), 7)
         self.assertEqual([call.args[0] for call in run.call_args_list],
                          [telemetry.PS_COMMAND, telemetry.LSOF_COMMAND, telemetry.FIREWALL_COMMAND,
-                          telemetry.CONNECTIONS_COMMAND])
+                          telemetry.NETSTAT_COMMAND, telemetry.CONNECTIONS_COMMAND, telemetry.SSH_LOG_COMMAND])
         self.assertTrue(all(call.kwargs["shell"] is False for call in run.call_args_list))
 
 

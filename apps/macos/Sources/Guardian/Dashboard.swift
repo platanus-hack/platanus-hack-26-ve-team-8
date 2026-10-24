@@ -1245,7 +1245,7 @@ func toneColor(_ status: String) -> Color {
 func evidenceSymbol(_ name: String) -> String {
     switch name {
     case "process", "processes": "cpu"
-    case "tcp_listener", "tcp_listeners", "tcp_connection", "tcp_connections": "network"
+    case "tcp_listener", "tcp_listeners", "tcp_connection", "tcp_connections", "ssh_logins": "network"
     case "launch_agent", "user_launch_agents": "gearshape.2"
     case "firewall", "application_firewall": "flame"
     case "osquery": "magnifyingglass"

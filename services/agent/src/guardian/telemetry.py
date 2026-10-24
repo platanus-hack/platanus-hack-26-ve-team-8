@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import ipaddress
+import os
 from pathlib import Path
 import platform
 import plistlib
+import re
 import shutil
 import subprocess
 import uuid
@@ -15,6 +17,17 @@ PS_COMMAND = ("/bin/ps", "-axo", "pid=,ppid=,uid=,lstart=,comm=")
 LSOF_COMMAND = ("/usr/sbin/lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn")
 CONNECTIONS_COMMAND = ("/usr/sbin/lsof", "-nP", "-iTCP", "-sTCP:ESTABLISHED", "-Fpcn")
 FIREWALL_COMMAND = ("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate", "--getstealthmode")
+# netstat lista sockets de todos los usuarios con su proceso, sin root: así se ve el sshd de root
+# (Inicio de sesión remoto) que lsof oculta.
+NETSTAT_COMMAND = ("/usr/sbin/netstat", "-anv", "-p", "tcp")
+# ponytail: ventana fija; los intentos entre escaneos más separados que esto se pierden.
+SSH_LOG_COMMAND = ("/usr/bin/log", "show", "--last", "2m", "--style", "compact",
+                   "--predicate", 'process BEGINSWITH "sshd"')
+# Proto Recv-Q Send-Q local remoto estado rxbytes txbytes rhiwat shiwat proceso:pid estado-hex ...
+# El nombre del proceso puede tener espacios. ponytail: macOS sin la columna proceso:pid no coincide.
+NETSTAT_LINE = re.compile(r"tcp(?:4|6|46)\s+\d+\s+\d+\s+(\S+)\s+(\S+)\s+(LISTEN|ESTABLISHED)\s+"
+                          r"(?:\d+\s+){4}(.+?):(\d+)\s+[0-9a-f]+\s")
+SSH_FAILURE = re.compile(r"Failed |Invalid user |\[preauth\]")
 
 
 def _observation(kind: str, source: str, entity: str, summary: str, attributes: dict) -> dict:
@@ -102,14 +115,62 @@ def parse_connections(output: str, listening_ports: set[int]) -> list[dict]:
             # El propio Mac conectándose a sí mismo, aunque use su IP de red, no es otro equipo.
             if local_port not in listening_ports or remote_host.is_loopback or remote_host == local_host:
                 continue
-            scope = "lan" if remote_host.is_private or remote_host.is_link_local else "public"
             observations.append(_observation("tcp_connection", "tcp_connections", f"{pid}:{value}",
                                             f"Conexión entrante de la red a {executable}",
                                             {"pid": pid, "executable": executable, "direction": "inbound",
                                              "local_address": str(local_host), "local_port": local_port,
                                              "remote_address": str(remote_host), "remote_port": remote_port,
-                                             "remote_scope": scope}))
+                                             "remote_scope": _scope(remote_host)}))
     return observations
+
+
+def _scope(address) -> str:
+    return "lan" if address.is_private or address.is_link_local else "public"
+
+
+def _lsof_address(value: str) -> str:
+    host, _, port = value.rpartition(".")
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
+def netstat_as_lsof(output: str, state: str, skip_pids: set[int]) -> str:
+    """Convierte los sockets de netstat en campos de lsof para reutilizar sus analizadores."""
+    lines = []
+    for line in output.splitlines():
+        match = NETSTAT_LINE.match(line)
+        if not match or match[3] != state or int(match[5]) in skip_pids:
+            continue
+        local, remote, _, executable, pid = match.groups()
+        name = _lsof_address(local) if state == "LISTEN" else f"{_lsof_address(local)}->{_lsof_address(remote)}"
+        lines += [f"p{pid}", f"c{executable}", f"n{name}"]
+    return "\n".join(lines)
+
+
+def parse_ssh_failures(output: str) -> list[dict]:
+    """Intentos de acceso SSH fallidos por equipo remoto. Solo se cuentan; el usuario probado no se guarda."""
+    attempts = {}
+    for line in output.splitlines():
+        if not SSH_FAILURE.search(line):
+            continue
+        # El nombre de usuario lo elige el atacante; sshd escribe la IP real al final, así que vale la última.
+        peers = re.findall(r"(\S+) port (\d+)", line)
+        if not peers:
+            continue
+        try:
+            address = ipaddress.ip_address(peers[-1][0].strip("[]").split("%", 1)[0])
+        except ValueError:
+            continue
+        address = getattr(address, "ipv4_mapped", None) or address
+        if not address.is_loopback:
+            # Varias líneas describen el mismo intento; el puerto de origen distingue intentos.
+            attempts.setdefault(address, set()).add(peers[-1][1])
+    return [_observation("tcp_connection", "ssh_logins", f"ssh:{address}",
+                         "Intentos de acceso SSH fallidos desde la red",
+                         # Inicio de sesión remoto de macOS escucha en el 22.
+                         {"executable": "sshd", "direction": "inbound", "local_port": 22,
+                          "remote_address": str(address), "remote_scope": _scope(address),
+                          "auth_failures": len(ports)})
+            for address, ports in attempts.items()]
 
 
 def parse_firewall(output: str) -> list[dict]:
@@ -138,6 +199,8 @@ def _command_snapshot(source: str, command: tuple[str, ...], parser) -> tuple[li
     except (OSError, subprocess.TimeoutExpired):
         return [], _coverage(source, "unknown", "El comando de inspección falló o agotó el tiempo.")
     observations = parser(result.stdout)
+    if source == "ssh_logins" and result.returncode == 0:
+        return observations, _coverage(source, "partial", "Intentos fallidos de SSH de los últimos dos minutos en el registro del sistema; solo si Inicio de sesión remoto está activado.")
     # lsof devuelve 1 sin salida cuando no hay sockets visibles que coincidan.
     if source in {"tcp_listeners", "tcp_connections"} and result.returncode == 1 and not result.stdout and not result.stderr:
         return [], _coverage(source, "partial", "No hay escuchas TCP visibles; los sockets de otros usuarios pueden estar ocultos.")
@@ -145,6 +208,15 @@ def _command_snapshot(source: str, command: tuple[str, ...], parser) -> tuple[li
         return observations, _coverage(source, "partial" if observations else "unknown",
                                        "La inspección informó un error; la visibilidad es incompleta.")
     return observations, _coverage(source, "partial", "Visibilidad del usuario actual; la instantánea es incompleta y no es un veredicto de seguridad.")
+
+
+def _netstat() -> str:
+    try:
+        result = subprocess.run(NETSTAT_COMMAND, capture_output=True, text=True, timeout=10,
+                                check=False, shell=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout if result.returncode == 0 else ""
 
 
 def _launch_agents(directory: Path) -> tuple[list[dict], dict]:
@@ -201,7 +273,7 @@ def _launch_agents(directory: Path) -> tuple[list[dict], dict]:
 
 def collect_snapshot() -> tuple[list[dict], list[dict]]:
     """Inspecciona solo este Mac. Sin cambios, escaneos, shell, daemon ni estado almacenado."""
-    sources = ("processes", "tcp_listeners", "tcp_connections", "application_firewall", "user_launch_agents")
+    sources = ("processes", "tcp_listeners", "tcp_connections", "ssh_logins", "application_firewall", "user_launch_agents")
     if platform.system() != "Darwin":
         return [], [_coverage(source, "unsupported", "Este recolector requiere macOS.") for source in sources]
     observations = []
@@ -212,9 +284,20 @@ def collect_snapshot() -> tuple[list[dict], list[dict]]:
         items, status = _command_snapshot(source, command, parser)
         observations.extend(items)
         coverage.append(status)
+    # lsof ya ve los procesos propios; netstat solo añade los de otros usuarios, como el sshd de root.
+    own = {o["attributes"]["pid"] for o in observations if o["kind"] == "process" and o["attributes"]["uid"] == os.getuid()}
+    sockets = _netstat()
+    observations.extend(parse_listeners(netstat_as_lsof(sockets, "LISTEN", own)))
     ports = {o["attributes"]["port"] for o in observations if o["kind"] == "tcp_listener" and "port" in o["attributes"]}
     items, status = _command_snapshot("tcp_connections", CONNECTIONS_COMMAND,
                                       lambda output: parse_connections(output, ports))
+    observations.extend(items + parse_connections(netstat_as_lsof(sockets, "ESTABLISHED", own), ports))
+    coverage.append(status)
+    if sockets:
+        for item in coverage:
+            if item["source"] in {"tcp_listeners", "tcp_connections"}:
+                item["detail"] += " Incluye sockets de otros usuarios (como sshd) vistos con netstat."
+    items, status = _command_snapshot("ssh_logins", SSH_LOG_COMMAND, parse_ssh_failures)
     observations.extend(items)
     coverage.append(status)
     items, status = _launch_agents(Path.home() / "Library" / "LaunchAgents")

@@ -363,9 +363,15 @@ struct AlertCopy {
             let port = alert.after.attributes["local_port"]?.int
             let remote = alert.after.attributes["remote_address"]?.text ?? "Un equipo"
             let internet = alert.after.attributes["remote_scope"]?.text == "public"
-            title = "\(remote) se conectó a \(program)" + (port.map { " (:\($0))" } ?? "")
-            detail = (internet ? "Un equipo de internet" : "Un equipo de tu red local") + " (\(remote)) abrió una conexión con \(program)"
-                + (port.map { " en el puerto \($0)" } ?? "") + ". Si no lo reconoces, bloquéalo: se corta su sesión actual y no podrá volver a conectarse."
+            if let failures = alert.after.attributes["auth_failures"]?.int {
+                title = "\(remote) intenta entrar por SSH (\(failures) fallos)"
+                detail = (internet ? "Un equipo de internet" : "Un equipo de tu red local") + " (\(remote)) falló \(failures) veces al iniciar sesión por SSH en este Mac."
+                    + " Varios intentos seguidos indican que prueba contraseñas. Bloquéalo y, si no usas SSH, desactiva Inicio de sesión remoto en Ajustes del Sistema."
+            } else {
+                title = "\(remote) se conectó a \(program)" + (port.map { " (:\($0))" } ?? "")
+                detail = (internet ? "Un equipo de internet" : "Un equipo de tu red local") + " (\(remote)) abrió una conexión con \(program)"
+                    + (port.map { " en el puerto \($0)" } ?? "") + ". Si no lo reconoces, bloquéalo: se corta su sesión actual y no podrá volver a conectarse."
+            }
             short = remote + (port.map { " → :\($0)" } ?? "")
             priority = 0
             defense = Defense(label: "Bloquear equipo", type: "block_peer", port: nil, observation: alert.after.id)

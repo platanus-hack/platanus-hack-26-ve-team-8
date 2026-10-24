@@ -14,7 +14,7 @@ private let spanishLabels = [
     "file_changed": "Cambio de archivo", "firewall_weakened": "Protección del firewall reducida",
     "listener_exposed": "Nueva escucha expuesta", "launch_daemon": "LaunchDaemon",
     "inbound_connection": "Conexión entrante de la red", "tcp_connection": "Conexión entrante",
-    "tcp_connections": "Conexiones entrantes", "block_peer": "Bloquear equipo", "lan": "Red local",
+    "tcp_connections": "Conexiones entrantes", "ssh_logins": "Accesos SSH fallidos", "block_peer": "Bloquear equipo", "lan": "Red local",
     "public": "Internet", "inbound": "Entrante",
     "shell_startup": "Inicio del shell", "regular": "Archivo regular", "symlink": "Enlace simbólico", "other": "Otro",
 

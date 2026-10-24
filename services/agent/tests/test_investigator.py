@@ -187,6 +187,24 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual([a.get("action") for a in result["proposed_actions"]],
                          [{"type": "block_peer", "observation_id": "conn-id"}, None, None])
 
+    @patch.dict(os.environ, {**ENV, "GUARDIAN_MODEL_ENDPOINT": "https://provider.example/v1/chat/completions",
+                             "GUARDIAN_ALLOW_CLOUD": "1"}, clear=True)
+    def test_ssh_failures_reach_model_as_count_only(self):
+        attempts = {"id": "ssh-id", "kind": "tcp_connection", "entity": "ssh:192.168.1.77", "timestamp": OBS[0]["timestamp"],
+                    "source": "ssh_logins", "summary": "Intentos de acceso SSH fallidos desde la red",
+                    "attributes": {"executable": "sshd", "direction": "inbound", "local_port": 22,
+                                   "remote_address": "192.168.1.77", "remote_scope": "lan", "auth_failures": 7}}
+        payloads = []
+        responses = [tool("search_observations", {}), final("observation_1")]
+        def complete(endpoint, key, payload, timeout):
+            payloads.append(copy.deepcopy(payload))
+            return responses.pop(0)
+        with patch("guardian.investigator._complete", side_effect=complete):
+            investigate([attempts])
+        evidence = json.loads(payloads[1]["messages"][-1]["content"])["untrusted_evidence"]["items"][0]
+        self.assertEqual(evidence["attributes"], {"local_port": 22, "auth_failures": 7, "remote_scope": "lan", "direction": "inbound"})
+        self.assertNotIn("192.168.1", json.dumps(payloads))
+
     @patch.dict(os.environ, ENV, clear=True)
     def test_timestamp_and_search_pagination(self):
         records = [{**OBS[0], "id": f"id-{i}"} for i in range(40)]

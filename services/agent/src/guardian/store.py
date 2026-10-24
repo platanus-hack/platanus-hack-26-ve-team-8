@@ -224,7 +224,7 @@ class Store:
             # Un directorio vacío inspeccionado correctamente también establece una referencia.
             seen_sources.update(c["source"] for c in coverage if c["source"] in FILE_SOURCES and c["status"] == "available")
             seen_sources.update(c["source"] for c in coverage
-                                if c["source"] in {"tcp_listeners", "tcp_connections"} and c["status"] in {"available", "partial"})
+                                if c["source"] in {"tcp_listeners", "tcp_connections", "ssh_logins"} and c["status"] in {"available", "partial"})
             for source in seen_sources:
                 db.execute("INSERT OR IGNORE INTO watch_sources VALUES (?)", (source,))
 

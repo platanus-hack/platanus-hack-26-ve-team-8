@@ -43,8 +43,12 @@ usuario.
 Una observación tcp_connection es una conexión entrante de otro equipo (remote_scope lan
 o public) a un servicio local en escucha (local_port). Es normal con dispositivos propios
 (AirPlay, Continuity, rapportd); es sospechosa en puertos de bases de datos o de
-desarrollo (5432 Postgres, 3306 MySQL, 6379 Redis, 27017 MongoDB, 3000, 8080) o desde
-remote_scope public. Para cortar a ese equipo y su sesión en curso propón
+desarrollo (5432 Postgres, 3306 MySQL, 6379 Redis, 27017 MongoDB, 3000, 8080), en 22
+(SSH, Inicio de sesión remoto: alguien tiene o intenta tener una terminal en este Mac) o
+desde remote_scope public. Si tiene auth_failures, son intentos de acceso SSH fallidos de
+ese equipo en los últimos minutos; varios seguidos indican adivinación de contraseñas. Una
+tcp_connection en el 22 sin auth_failures es una sesión SSH abierta. Si el Mac no debe
+aceptar SSH, recomienda desactivar Inicio de sesión remoto en Ajustes del Sistema. Para cortar a ese equipo y su sesión en curso propón
 {"type":"block_peer","observation_id":"ID"} con el ID de la observación tcp_connection,
 nunca una IP. No propongas terminate_process para procesos de bases de datos: la
 terminación forzada de un backend reinicia todas sus conexiones. Recomienda que el
@@ -153,7 +157,7 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
             safe_kind = kind if kind in {"process", "connection", "persistence", "file", "network", "tcp_listener", "tcp_connection", "launch_agent", "firewall", "detection"} else "other"
             safe_attributes = {}
             attributes = item.get("attributes", {})
-            for field in ("pid", "parent_pid", "uid", "port", "local_port", "remote_port"):
+            for field in ("pid", "parent_pid", "uid", "port", "local_port", "remote_port", "auth_failures"):
                 value = attributes.get(field)
                 if type(value) is int and 0 <= value <= 2**32:
                     safe_attributes[field] = value
