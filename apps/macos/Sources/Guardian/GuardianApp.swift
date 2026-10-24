@@ -101,10 +101,10 @@ final class GuardianModel {
                     if current != nil { break }
                 }
             }
-            guard let current else { throw ClientError(message: "El agente no estuvo listo. Revisa la configuración de Python en el README del repositorio y vuelve a pulsar Conectar.") }
+            guard let current else { throw ClientError(message: "El agente no estuvo listo. Reinicia Arkangel y vuelve a pulsar Conectar.") }
             status = current
             guard current.sdk_available != false else {
-                throw ClientError(message: "Falta Claude Agent SDK en el entorno del agente. Ejecuta bash scripts/setup-agent.sh desde el repositorio de Arkangel y vuelve a intentarlo.")
+                throw ClientError(message: "La instalación del agente está incompleta. Reinstala Arkangel; si usas el entorno de desarrollo, vuelve a prepararlo.")
             }
             let configuredStatus: AgentStatus
             if restoring && current.onboarding_required == false {
@@ -226,7 +226,7 @@ final class GuardianModel {
                 }
                 try await Task.sleep(for: .milliseconds(250))
             }
-            throw ClientError(message: "El agente local no estuvo listo; revisa el entorno de Python.")
+            throw ClientError(message: "El agente local no estuvo listo. Reinicia Arkangel y vuelve a intentarlo.")
         } catch { self.error = error.localizedDescription }
     }
 

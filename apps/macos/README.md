@@ -1,10 +1,13 @@
 # Guardian para macOS
 
 Panel nativo de SwiftUI y cliente para la barra de menús. Requiere macOS 15+, Swift 6,
-Python 3.11+. Para investigar con Claude se requiere una clave de API de Anthropic
+Python 3.11+ solo en desarrollo y empaquetado. La app instalada incluye Python y el
+agente; sus usuarios no ejecutan scripts ni instalan dependencias. Para investigar con Claude se requiere una clave de API de Anthropic
 con acceso a Claude Haiku 5.5; la vigilancia local funciona sin clave.
 
-Desde la raíz del repositorio, prepara el agente una vez:
+## Desarrollo desde el código fuente
+
+Desde la raíz del repositorio, prepara el agente una vez (solo desarrolladores):
 
 ```sh
 bash scripts/setup-agent.sh
@@ -31,12 +34,21 @@ swiftc -typecheck -parse-as-library -swift-version 6 \
 Si el entorno bloquea el sandbox anidado de plugins del compilador de Swift, añade
 `-disable-sandbox` a la comprobación de tipos. No cambia los permisos de la aplicación.
 
-Para empaquetar el bundle de `scripts/package-macos.sh` en un instalador para arrastrar
-a Aplicaciones (requiere `create-dmg`; escribe `.guardian/Arkangel.dmg` y nunca
-sobrescribe):
+## Crear la app y el instalador
+
+El empaquetado requiere un Python portátil de
+[python-build-standalone](https://github.com/astral-sh/python-build-standalone/releases),
+archivo `install_only` de Python 3.11+ para macOS y la arquitectura del Mac donde se
+compila (`aarch64-apple-darwin` para Apple Silicon o `x86_64-apple-darwin` para Intel).
+Descarga una versión concreta, verifica su SHA-256 publicado y extrae el archivo.
+No uses un `.venv`, Python de Homebrew ni el Python del sistema como runtime portátil.
+
+Desde la raíz del repositorio:
 
 ```sh
-bash scripts/build-dmg.sh [ruta/a/Arkangel.app] [ruta/a/salida.dmg]
+GUARDIAN_PYTHON_RUNTIME=/ruta/al/python-extraido bash scripts/package-macos.sh
+open .guardian/Arkangel.app
+bash scripts/build-dmg.sh
 ```
 
 ## Organización del espacio de trabajo
@@ -69,6 +81,31 @@ Revisa también el estado sin datos, la evidencia anterior tras una desconexión
 la escena con Reducir movimiento activado. No hace falta una llamada a un modelo
 para comprobar estos estados.
 
+El empaquetador compila Swift en release, copia Python y el icono, instala el agente
+con Claude Agent SDK y truststore dentro de la copia y firma el bundle localmente.
+Las descargas de dependencias ocurren en la máquina de quien construye la app.
+El SDK incluye su ejecutable de Claude; no se requiere una instalación global.
+La comprobación de imports no inicia vigilancia ni hace llamadas a modelos.
+Si `.guardian/Arkangel.app` ya existe, muévela antes de generar otra versión.
+El DMG requiere `create-dmg` en la máquina de empaquetado y no sobrescribe una salida existente.
+
+Los usuarios arrastran **Arkangel.app** a **Aplicaciones**, la abren y configuran
+su clave desde la interfaz. No necesitan el repositorio ni Python instalado.
+El bundle usa su propio runtime incluso si existe `GUARDIAN_REPO_ROOT`.
+La firma local no sustituye la firma Developer ID ni la notarización para distribución pública.
+
+Comprobaciones manuales del empaquetado:
+
+```sh
+python3 -m unittest discover -s scripts/tests
+codesign --verify --deep --strict .guardian/Arkangel.app
+```
+
+Prueba también la app en un Mac limpio de la misma arquitectura, sin Python ni checkout:
+muévela a una ruta con espacios, comprueba el icono del Dock, abre el panel y activa
+la vigilancia local sin Claude. Conectar Claude debe requerir el consentimiento de
+la interfaz; no es parte de las comprobaciones automáticas del paquete.
+
 ## Primera conexión
 
 Introduce la clave en el campo seguro y da tu consentimiento explícito para que los
@@ -81,11 +118,11 @@ El consentimiento se guarda aparte como una preferencia no secreta. Configurar
 proveedor, en el menú, vuelve a abrir este formulario para cambiar la clave; un campo
 vacío reutiliza la clave guardada.
 
-Si no hay ningún agente accesible, Conectar inicia `.venv/bin/python -m guardian
-serve --watch` del repositorio como proceso hijo en primer plano, con el directorio del
-código fuente en `PYTHONPATH`. Envía la clave por el socket Unix cuando el agente está
-listo. La app nunca instala dependencias. Si falta la configuración, muestra un error
-con instrucciones. También puedes elegir **Vigilar localmente sin conectar Claude**.
+Si no hay ningún agente accesible, Conectar inicia el Python incluido en la app
+con `-I -m guardian serve --watch` como proceso hijo en primer plano. En desarrollo
+usa `.venv/bin/python` y el código fuente del repositorio en `PYTHONPATH`. Envía la clave por el socket Unix cuando el agente está
+listo. La app nunca instala dependencias al abrirse. Si el runtime incluido está dañado
+o ausente, pide reinstalar la app. También puedes elegir **Vigilar localmente sin conectar Claude**.
 La automatización requiere la autorización separada de **Señales**; conectar el
 proveedor no la activa. La autorización se conserva al reiniciar.
 
@@ -133,8 +170,8 @@ herramientas) llegan en inglés y se traducen solo al mostrarlos.
 
 ## Límites operativos
 
-Solo ejecutable de desarrollo: el empaquetado del bundle de la app, la firma, la
-notarización, la distribución y el inicio al iniciar sesión están pendientes. El Llavero
+El bundle autónomo incluye una firma ad hoc para pruebas locales. La firma Developer ID,
+la notarización, la distribución pública y el inicio al iniciar sesión están pendientes. El Llavero
 puede pedir la aprobación del usuario de macOS para el ejecutable de desarrollo sin
 firmar. La app suprime stdout y stderr del proceso hijo; usa la CLI en primer plano
 documentada por separado para diagnósticos detallados del servicio. El lanzamiento de la
