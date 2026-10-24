@@ -244,7 +244,7 @@ final class GuardianModel {
         guard !notificationRequested else { return }
         notificationRequested = true
         guard Bundle.main.bundleIdentifier != nil else {
-            notificationDetail = "Este ejecutable sin bundle no admite avisos de macOS; consulta las señales en la barra de menús."
+            notificationDetail = "Las notificaciones de macOS no están disponibles en esta versión. Revisa las señales desde la barra de menús."
             return
         }
         do {
@@ -262,8 +262,12 @@ final class GuardianModel {
         let fresh = alerts.filter { !$0.acknowledged && !notified.contains($0.id) }
         guard !fresh.isEmpty else { return }
         let center = UNUserNotificationCenter.current()
-        let settings = await center.notificationSettings()
-        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        let canNotify = await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional)
+            }
+        }
+        guard canNotify else { return }
         let content = UNMutableNotificationContent()
         content.title = "Guardian detectó cambios que requieren revisión"
         content.body = "Hay \(fresh.count) señales nuevas. Abre la app para revisar su evidencia."

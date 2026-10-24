@@ -39,6 +39,36 @@ sobrescribe):
 bash scripts/build-dmg.sh [ruta/a/Arkangel.app] [ruta/a/salida.dmg]
 ```
 
+## Organización del espacio de trabajo
+
+Resumen es la pantalla inicial: reúne el estado de vigilancia, métricas con acceso
+a sus secciones, señales sin revisar, actividad reciente y un campo compacto para
+investigar. En ventanas amplias usa dos columnas; en ventanas estrechas se apilan
+y se conserva el desplazamiento. Red y cobertura muestran un resumen y abren sus
+detalles en un panel independiente, incluidas las acciones de defensa. La barra lateral separa el espacio
+de trabajo (Resumen, En vivo y Señales) de la evidencia (Observaciones e
+Investigaciones). Configurar investigador abre un panel dedicado para la clave y
+el consentimiento; la vigilancia local sigue disponible sin Claude.
+
+La interfaz adapta el espacio de contenido a la apariencia clara u oscura de macOS,
+con una barra lateral azul noche y una identidad de investigador alado dibujada en
+SwiftUI. Los controles flotantes, la selección de navegación y el compositor usan
+vidrio; las tablas de evidencia conservan superficies legibles. Con Swift 6.2 y el
+SDK de macOS 26 se usa `glassEffect`; con el toolchain anterior se usa material
+ultrafino con reflejos y profundidad. Reducir transparencia cambia esos controles
+a superficies opacas. En vivo separa el mapa 3D de los controles y de la actividad del investigador. El
+núcleo es simbólico; los puntos representan evidencia registrada, no conexiones
+en tiempo real. Su leyenda distingue tipos de evidencia, citas y señales. La cámara
+usa exposición fija, se limita el renderizado a 30 FPS y se respeta Reducir movimiento. Las acciones y tarjetas
+que necesitan más espacio pasan a una disposición vertical en ventanas estrechas.
+
+Para revisar manualmente el diseño, comprueba ambas apariencias a 860 × 620 y
+1120 × 760, la navegación con teclado, la vigilancia sin proveedor, los errores de
+conexión y la apertura y cierre de la configuración desde la ventana y el menú.
+Revisa también el estado sin datos, la evidencia anterior tras una desconexión y
+la escena con Reducir movimiento activado. No hace falta una llamada a un modelo
+para comprobar estos estados.
+
 ## Primera conexión
 
 Introduce la clave en el campo seguro y da tu consentimiento explícito para que los
