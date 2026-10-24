@@ -14,3 +14,4 @@ dist/
 .nitro/
 apps/web/src/routeTree.gen.ts
 services/agent/build/
+demo/.state/
