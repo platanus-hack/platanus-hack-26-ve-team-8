@@ -60,26 +60,34 @@ gh release create v0.3.0 .guardian/Arkangel.dmg --title "Arkangel 0.3.0"
 
 ## Organización del espacio de trabajo
 
-Resumen es la pantalla inicial: reúne el estado de vigilancia, métricas con acceso
-a sus secciones, señales sin revisar, actividad reciente y un campo compacto para
-investigar. En ventanas amplias usa dos columnas; en ventanas estrechas se apilan
-y se conserva el desplazamiento. Red y cobertura muestran un resumen y abren sus
-detalles en un panel independiente, incluidas las acciones de defensa. La barra lateral separa el espacio
-de trabajo (Resumen, En vivo y Señales) de la evidencia (Observaciones e
-Investigaciones). Configurar investigador abre un panel dedicado para la clave y
-el consentimiento; la vigilancia local sigue disponible sin Claude.
+La app abre un centro de mando sin barra lateral ni pestañas. La cabecera muestra
+el estado del agente; el área principal reúne exposición observada, un orbe de
+evidencia y señales pendientes. El número destacado cuenta escuchas accesibles sin
+bloqueo registrado: no es un porcentaje de seguridad ni demuestra un ataque.
 
-La interfaz adapta el espacio de contenido a la apariencia clara u oscura de macOS,
-con una barra lateral azul noche y una identidad de investigador alado dibujada en
-SwiftUI. Los controles flotantes, la selección de navegación y el compositor usan
-vidrio; las tablas de evidencia conservan superficies legibles. Con Swift 6.2 y el
-SDK de macOS 26 se usa `glassEffect`; con el toolchain anterior se usa material
-ultrafino con reflejos y profundidad. Reducir transparencia cambia esos controles
-a superficies opacas. En vivo separa el mapa 3D de los controles y de la actividad del investigador. El
-núcleo es simbólico; los puntos representan evidencia registrada, no conexiones
-en tiempo real. Su leyenda distingue tipos de evidencia, citas y señales. La cámara
-usa exposición fija, se limita el renderizado a 30 FPS y se respeta Reducir movimiento. Las acciones y tarjetas
-que necesitan más espacio pasan a una disposición vertical en ventanas estrechas.
+La barra inferior permite preguntar al investigador y muestra su estado real. El
+menú de la cabecera abre observaciones, señales y automatización, informes,
+seguimiento completo, estado y configuración. Los paneles laterales conservan las
+funciones anteriores, y sus detalles y configuración se abren en modales. Escape o
+el botón Cerrar devuelve al centro de mando. La disposición pasa de tres columnas
+a dos y luego a una según el ancho, con desplazamiento cuando es necesario.
+
+El orbe representa evidencia registrada, no conexiones en tiempo real. Hacer clic
+en un nodo abre sus metadatos; el registro ofrece acceso equivalente con teclado.
+Las primeras señales cargadas establecen una referencia visual. Las nuevas señales
+muestran un aviso dentro de la app con acciones para revisar o descartar el aviso;
+descartarlo no marca la señal como revisada. Las notificaciones genéricas de macOS
+siguen requiriendo autorización y un bundle compatible.
+
+El estilo usa negro, amarillo lima y colores específicos para señales y estados.
+El núcleo es simbólico; la cámara usa exposición fija y se limita el renderizado a
+30 FPS. Reducir movimiento pausa las animaciones. Los porcentajes de blindaje,
+tráfico entrante, ataques en curso, verificación de firmas y progresos previstos
+que aparezcan en referencias de diseño no se presentan como datos de esta app.
+
+Las acciones de defensa conservan la aprobación individual de administrador de
+macOS: no hay ejecución de un lote con una sola aprobación. Los detalles de red y
+las propuestas de los informes permiten las mismas acciones fijas del servicio.
 
 Para revisar manualmente el diseño, comprueba ambas apariencias a 860 × 620 y
 1120 × 760, la navegación con teclado, la vigilancia sin proveedor, los errores de

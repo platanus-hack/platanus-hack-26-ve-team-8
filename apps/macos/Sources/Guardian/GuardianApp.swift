@@ -31,6 +31,7 @@ func es(_ value: String) -> String { spanishLabels[value] ?? value }
 @Observable
 final class GuardianModel {
     var alerts: [AgentAlert] = []
+    var alertsLoaded = false
     var showAlerts = false
     var notificationDetail: String?
     private var notificationRequested = false
@@ -149,6 +150,7 @@ final class GuardianModel {
             observations = newObservations
             if baseline == nil && !observations.isEmpty { setBaseline() }
             alerts = newAlerts
+            alertsLoaded = true
             if newStatus.monitoring {
                 await requestNotifications()
                 await notifyNewAlerts()
