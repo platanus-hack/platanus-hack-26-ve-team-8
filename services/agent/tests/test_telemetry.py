@@ -87,6 +87,8 @@ class TelemetryTests(unittest.TestCase):
                          {"executable": "sshd", "local_port": 22, "direction": "inbound"})
         self.assertEqual(items[0]["kind"], "tcp_connection")
         self.assertNotIn("admin", str(items))
+        # Without --info, log show hides every sshd authentication line.
+        self.assertIn("--info", telemetry.SSH_LOG_COMMAND)
 
     def test_firewall_state(self):
         off = telemetry.parse_firewall("Firewall is disabled. (State = 0)\nFirewall stealth mode is off\n")

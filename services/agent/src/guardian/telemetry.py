@@ -21,7 +21,8 @@ FIREWALL_COMMAND = ("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglo
 # (Inicio de sesión remoto) que lsof oculta.
 NETSTAT_COMMAND = ("/usr/sbin/netstat", "-anv", "-p", "tcp")
 # ponytail: ventana fija; los intentos entre escaneos más separados que esto se pierden.
-SSH_LOG_COMMAND = ("/usr/bin/log", "show", "--last", "2m", "--style", "compact",
+# sshd escribe "Invalid user"/"Failed" con nivel Info, que log show oculta sin --info.
+SSH_LOG_COMMAND = ("/usr/bin/log", "show", "--last", "2m", "--info", "--style", "compact",
                    "--predicate", 'process BEGINSWITH "sshd"')
 # Proto Recv-Q Send-Q local remoto estado rxbytes txbytes rhiwat shiwat proceso:pid estado-hex ...
 # El nombre del proceso puede tener espacios. ponytail: macOS sin la columna proceso:pid no coincide.

@@ -20,11 +20,13 @@ for user in admin root test oracle postgres ubuntu guest support; do
   if error=$(ssh $OPTS -o BatchMode=yes "$user@$HOST" true 2>&1); then
     echo "Acceso concedido como $user"
   else
+    # Solo los fallos de conexión significan que sshd no respondió; cualquier otro error es un intento rechazado.
     case "$error" in
-      *"Permission denied"*|*"Too many authentication failures"*) echo "Intento fallido como $user" ;;
-      *) echo "No se llegó a sshd en $HOST:22: $error"
+      *"connect to host"*|*"Could not resolve"*|*"timed out"*)
+         echo "No se llegó a sshd en $HOST:22: $error"
          echo "Activa Inicio de sesión remoto en el Mac atacado y comprueba que ambos están en la misma red."
          exit 1 ;;
+      *) echo "Intento fallido como $user" ;;
     esac
   fi
   sleep 1
