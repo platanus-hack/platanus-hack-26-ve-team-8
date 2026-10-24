@@ -27,6 +27,13 @@ swiftc -typecheck -parse-as-library -swift-version 6 \
 If the environment blocks Swift’s nested compiler-plugin sandbox, add
 `-disable-sandbox` to type checking. It does not change application permissions.
 
+To wrap the bundle from `scripts/package-macos.sh` in a drag-to-Applications
+installer (requires `create-dmg`; writes `.guardian/Arkangel.dmg`, never overwrites):
+
+```sh
+bash scripts/build-dmg.sh [path/to/Arkangel.app] [path/to/output.dmg]
+```
+
 ## First connection
 
 Enter the key in the secure field and explicitly consent to minimized telemetry

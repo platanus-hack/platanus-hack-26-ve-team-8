@@ -154,12 +154,12 @@ struct GuardianApp: App {
     @NSApplicationDelegateAdaptor(GuardianAppDelegate.self) private var appDelegate
     @State private var model = GuardianModel()
     var body: some Scene {
-        WindowGroup("Guardian", id: "dashboard") {
+        WindowGroup("Arkangel", id: "dashboard") {
             Dashboard(model: model)
                 .frame(minWidth: 860, minHeight: 620)
         }
         .defaultSize(width: 1120, height: 760)
-        MenuBarExtra("Guardian", systemImage: "shield.lefthalf.filled") {
+        MenuBarExtra("Arkangel", systemImage: "shield.lefthalf.filled") {
             GuardianMenu(model: model)
         }
     }
@@ -169,7 +169,7 @@ struct GuardianMenu: View {
     @Bindable var model: GuardianModel
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Text(model.status == nil ? "Agent disconnected" : "Guardian · Agent connected")
+        Text(model.status == nil ? "Agent disconnected" : "Arkangel · Agent connected")
         if let status = model.status {
             Text(status.monitoring ? "Monitoring enabled" : "Monitoring paused")
             Text("\(status.observation_count) recorded observations")
@@ -211,7 +211,7 @@ struct Dashboard: View {
     var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 16) {
-                Label("GUARDIAN", systemImage: "shield.lefthalf.filled")
+                Label("ARKANGEL", systemImage: "shield.lefthalf.filled")
                     .font(.headline).tracking(2).padding(.horizontal, 12).padding(.top, 20)
                 Text("Local defensive investigator")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12)
