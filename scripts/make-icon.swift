@@ -1,4 +1,4 @@
-// Renders the app icon to apps/macos/Icon/AppIcon.icns (plus a PNG preview). Run: swift scripts/make-icon.swift
+// Genera el icono de la app en apps/macos/Icon/AppIcon.icns (más una vista previa PNG). Uso: swift scripts/make-icon.swift
 import AppKit
 
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -11,7 +11,7 @@ func render(_ px: Int) -> Data {
                                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
     let s = CGFloat(px) / 1024
-    // Apple's macOS grid: 824pt body inset 100pt on a 1024pt canvas.
+    // Cuadrícula de macOS de Apple: cuerpo de 824 pt con margen de 100 pt en un lienzo de 1024 pt.
     let body = NSRect(x: 100 * s, y: 100 * s, width: 824 * s, height: 824 * s)
     let tile = NSBezierPath(roundedRect: body, xRadius: 185 * s, yRadius: 185 * s)
     NSGraphicsContext.saveGraphicsState()

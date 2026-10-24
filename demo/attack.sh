@@ -1,8 +1,8 @@
 #!/bin/sh
-# Hackathon demo: simulate two attacker footholds on THIS Mac so Arkangel can detect them.
-# Harmless and reversible with demo/cleanup.sh:
-# - a LaunchAgent that imitates an Apple label (never loaded; at most runs once at next login, then exits),
-# - a renamed copy of /usr/bin/nc listening on 127.0.0.1:4444 (loopback only, nothing leaves the Mac).
+# Demo del hackathon: simula dos puntos de apoyo de un atacante en ESTE Mac para que Arkangel los detecte.
+# Inofensivo y reversible con demo/cleanup.sh:
+# - un LaunchAgent que imita una etiqueta de Apple (nunca se carga; como mucho se ejecuta una vez en el próximo inicio de sesión y termina),
+# - una copia renombrada de /usr/bin/nc escuchando en 127.0.0.1:4444 (solo loopback, nada sale del Mac).
 set -eu
 STATE="${TMPDIR:-/tmp}/arkangel-demo"
 BINARY="$STATE/softwareupdated"
@@ -26,6 +26,6 @@ EOF
 "$BINARY" -lk 127.0.0.1 4444 >/dev/null 2>&1 &
 echo $! > "$STATE/listener.pid"
 
-echo "Planted $PLIST"
-echo "Listening as softwareupdated on 127.0.0.1:4444 (pid $(cat "$STATE/listener.pid"))"
-echo "Run demo/cleanup.sh when the demo is over, and before logging out."
+echo "Plantado $PLIST"
+echo "Escuchando como softwareupdated en 127.0.0.1:4444 (pid $(cat "$STATE/listener.pid"))"
+echo "Ejecuta demo/cleanup.sh al terminar la demo y antes de cerrar sesión."

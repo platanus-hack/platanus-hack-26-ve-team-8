@@ -120,7 +120,7 @@ class AnthropicTests(unittest.TestCase):
         self.assertIn("untrusted_evidence", tool_payload)
         attributes = tool_payload["untrusted_evidence"]["items"][0]["attributes"]
         self.assertEqual(attributes, {"pid": 123, "RunAtLoad": True, "Disabled": False})
-        self.assertTrue(any("coverage is partial" in item for item in result["limitations"]))
+        self.assertTrue(any("cobertura de recolección es parcial" in item for item in result["limitations"]))
         self.assertEqual(asyncio.run(options.can_use_tool("Bash", {"command": "anything"}, None)).behavior, "deny")
         self.assertEqual(asyncio.run(options.can_use_tool("mcp__guardian__get_coverage", {}, None)).behavior, "allow")
 

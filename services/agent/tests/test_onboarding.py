@@ -46,10 +46,10 @@ class OnboardingTests(unittest.TestCase):
 
     @patch("guardian.service.validate_key")
     def test_missing_consent_or_sdk_never_contacts_anthropic(self, validate):
-        with self.assertRaisesRegex(ValueError, "Consent"):
+        with self.assertRaisesRegex(ValueError, "consentimiento"):
             self.service.configure_provider({"api_key": "fake-test-key", "allow_cloud": False})
         with patch("guardian.service.sdk_available", return_value=False):
-            with self.assertRaisesRegex(ValueError, "SDK is missing"):
+            with self.assertRaisesRegex(ValueError, "Falta Claude Agent SDK"):
                 self.service.configure_provider({"api_key": "fake-test-key", "allow_cloud": True})
         validate.assert_not_called()
 
@@ -66,7 +66,7 @@ class OnboardingTests(unittest.TestCase):
 
     @patch("guardian.onboarding.urllib.request.build_opener")
     def test_verification_errors_do_not_echo_provider_body_or_key(self, opener):
-        for code, message in ((401, "rejected"), (404, "not available"), (429, "rate limiting"), (500, "could not verify")):
+        for code, message in ((401, "rechazó"), (404, "no está disponible"), (429, "limitando"), (500, "no pudo verificar")):
             opener.return_value.open.side_effect = urllib.error.HTTPError("url", code, "PRIVATE", {}, io.BytesIO(b"PRIVATE"))
             with self.subTest(code=code), self.assertRaisesRegex(ValueError, message) as error:
                 validate_key("fake-test-key")

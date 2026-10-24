@@ -87,7 +87,7 @@ class ServiceTests(unittest.TestCase):
     def test_concurrent_investigation_rejected(self):
         self.service.investigation_lock.acquire()
         try:
-            with self.assertRaisesRegex(ValueError, "already running"):
+            with self.assertRaisesRegex(ValueError, "en curso"):
                 self.service.investigate()
         finally:
             self.service.investigation_lock.release()

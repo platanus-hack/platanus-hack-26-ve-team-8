@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Page: String, CaseIterable, Identifiable {
-    case live = "Live", overview = "Overview", observations = "Observations", investigations = "Investigations"
+    case live = "En vivo", overview = "Resumen", observations = "Observaciones", investigations = "Investigaciones"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -13,10 +13,10 @@ enum Page: String, CaseIterable, Identifiable {
     }
     var subtitle: String {
         switch self {
-        case .live: "Watch Claude defend this Mac in real time."
-        case .overview: "Evidence first. Actions stay proposals."
-        case .observations: "Recorded local evidence, treated as untrusted."
-        case .investigations: "Hypotheses, counterevidence, and proposals."
+        case .live: "Mira a Claude defender este Mac en tiempo real."
+        case .overview: "Primero la evidencia. Las acciones son solo propuestas."
+        case .observations: "Evidencia local registrada, tratada como no confiable."
+        case .investigations: "Hipótesis, contraevidencia y propuestas."
         }
     }
 }
@@ -28,7 +28,7 @@ struct Dashboard: View {
     @State private var kindFilter: String?
     @Environment(\.scenePhase) private var scenePhase
     private var page: Page { selection ?? .overview }
-    private let suggestions = ["Explain open network listeners", "Review my launch agents"]
+    private let suggestions = ["Explica las escuchas de red abiertas", "Revisa mis LaunchAgents"]
 
     var body: some View {
         NavigationSplitView {
@@ -39,7 +39,7 @@ struct Dashboard: View {
                     if let error = model.error { errorBanner(error) }
                     if model.needsSetup { onboarding }
                     if model.status == nil && (page != .overview || model.needsSetup) {
-                        Text("Agent disconnected. Connect starts a foreground agent when needed. Previously loaded evidence may remain below.")
+                        Text("Agente desconectado. Conectar inicia un agente en primer plano si hace falta. La evidencia cargada antes puede seguir abajo.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     switch page {
@@ -61,10 +61,10 @@ struct Dashboard: View {
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     if model.busy || model.investigating { ProgressView().controlSize(.small) }
-                    Button("Take local snapshot", systemImage: "camera.viewfinder") { Task { await model.perform("scan") } }
-                        .help("Take a read-only local snapshot").disabled(model.busy || model.status == nil)
-                    Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
-                        .help("Refresh recorded agent data").disabled(model.busy)
+                    Button("Tomar instantánea local", systemImage: "camera.viewfinder") { Task { await model.perform("scan") } }
+                        .help("Tomar una instantánea local de solo lectura").disabled(model.busy || model.status == nil)
+                    Button("Actualizar", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
+                        .help("Actualizar los datos registrados del agente").disabled(model.busy)
                 }
             }
         }
@@ -106,7 +106,7 @@ struct Dashboard: View {
                 StatusDot(color: state.color)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(state.title).font(.callout.weight(.medium))
-                    Text(model.status?.provider ?? "No agent reachable")
+                    Text(model.status.map { es($0.provider) } ?? "Ningún agente accesible")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -118,15 +118,15 @@ struct Dashboard: View {
 
     private var connection: (title: String, detail: String, color: Color) {
         guard let status = model.status else {
-            if model.restoringStartup { return ("Reconnecting…", "Restoring your saved connection.", .secondary) }
-            return ("Agent disconnected", "Connect starts a foreground agent when needed. Previously loaded evidence may remain visible.", .secondary)
+            if model.restoringStartup { return ("Reconectando…", "Restaurando tu conexión guardada.", .secondary) }
+            return ("Agente desconectado", "Conectar inicia un agente en primer plano si hace falta. La evidencia cargada antes puede seguir visible.", .secondary)
         }
         if status.onboarding_required == true {
-            return ("Setup required", "Add your Anthropic API key to enable investigations.", .warning)
+            return ("Configuración necesaria", "Añade tu clave de API de Anthropic para activar las investigaciones.", .warning)
         }
         return status.monitoring
-            ? ("Monitoring active", "Periodic read-only snapshots are being recorded.", .success)
-            : ("Monitoring paused", "Snapshots are paused. Recorded evidence stays reviewable.", .warning)
+            ? ("Monitoreo activo", "Se están registrando instantáneas periódicas de solo lectura.", .success)
+            : ("Monitoreo en pausa", "Las instantáneas están en pausa. La evidencia registrada sigue disponible para revisar.", .warning)
     }
 
     // MARK: Shared pieces
@@ -138,7 +138,7 @@ struct Dashboard: View {
             Text(message).font(.callout).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button { model.error = nil } label: { Image(systemName: "xmark") }
-                .buttonStyle(.plain).foregroundStyle(.secondary).help("Dismiss")
+                .buttonStyle(.plain).foregroundStyle(.secondary).help("Descartar")
         }
         .padding(12)
         .background(Color.danger.opacity(0.06), in: shape)
@@ -169,31 +169,31 @@ struct Dashboard: View {
         VStack(alignment: .leading, spacing: 16) {
             BrandMark(size: 32)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Connect your investigator").font(.title2.weight(.semibold))
+                Text("Conecta tu investigador").font(.title2.weight(.semibold))
                 Text("Anthropic · Claude Haiku 5.5").font(.callout).foregroundStyle(.secondary)
             }
-            Text("Add your Anthropic API key to enable investigations. The agent validates the model before connecting.")
+            Text("Añade tu clave de API de Anthropic para activar las investigaciones. El agente valida el modelo antes de conectar.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            SecureField("Anthropic API key", text: $model.apiKey, prompt: Text("Anthropic API key (leave blank to use saved key)"))
+            SecureField("Clave de API de Anthropic", text: $model.apiKey, prompt: Text("Clave de API de Anthropic (déjala vacía para usar la guardada)"))
                 .textFieldStyle(.plain).font(.system(.body, design: .monospaced))
                 .inputField()
                 .disabled(model.busy)
             VStack(alignment: .leading, spacing: 8) {
-                assurance("lock", "Your key is saved in macOS Keychain after successful validation. A saved key is never displayed.")
-                assurance("hand.raised", "Monitoring collects local evidence. Model investigations run only when requested.")
-                assurance("power", "Connect may start Arkangel’s foreground Python agent. Quitting stops an agent started by this app; an external agent keeps running.")
+                assurance("lock", "Tu clave se guarda en el Llavero de macOS tras validarse. Una clave guardada nunca se muestra.")
+                assurance("hand.raised", "El monitoreo recolecta evidencia local. Las investigaciones con el modelo solo se ejecutan cuando las pides.")
+                assurance("power", "Conectar puede iniciar el agente de Python de Arkangel en primer plano. Al salir se detiene el agente iniciado por esta app; un agente externo sigue activo.")
             }
-            Toggle("I allow minimized local telemetry metadata to be sent to Anthropic and understand that investigations incur API charges.", isOn: $model.cloudConsent)
+            Toggle("Permito enviar a Anthropic metadatos minimizados de la telemetría local y entiendo que las investigaciones generan cargos de API.", isOn: $model.cloudConsent)
                 .toggleStyle(.checkbox).fixedSize(horizontal: false, vertical: true)
             Hairline()
             HStack(spacing: 8) {
                 if model.setupVisible && model.status?.onboarding_required == false {
-                    Button("Close setup") { model.setupVisible = false; model.apiKey = "" }
+                    Button("Cerrar configuración") { model.setupVisible = false; model.apiKey = "" }
                         .buttonStyle(ArkButton(prominent: false))
                 }
                 Spacer()
                 if model.busy { ProgressView().controlSize(.small) }
-                Button("Connect") { Task { await model.connect() } }
+                Button("Conectar") { Task { await model.connect() } }
                     .buttonStyle(ArkButton())
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.busy || !model.cloudConsent)
@@ -221,18 +221,18 @@ struct Dashboard: View {
             if model.status != nil || !model.needsSetup { hero }
             if let status = model.status {
                 HStack(spacing: 12) {
-                    metric("Recorded observations", status.observation_count.formatted())
-                    metric("Investigations", model.investigations.count.formatted())
-                    metric("Model provider", status.provider)
+                    metric("Observaciones registradas", status.observation_count.formatted())
+                    metric("Investigaciones", model.investigations.count.formatted())
+                    metric("Proveedor del modelo", es(status.provider))
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
             investigatorInput
             if let status = model.status {
-                section("Collection coverage", "What the latest snapshot could and could not see.") {
+                section("Cobertura de recolección", "Lo que la última instantánea pudo y no pudo ver.") {
                     VStack(spacing: 0) {
                         if status.coverage.isEmpty {
-                            Text("No coverage reported.").foregroundStyle(.secondary).padding(14)
+                            Text("No se informó cobertura.").foregroundStyle(.secondary).padding(14)
                         }
                         ForEach(Array(status.coverage.enumerated()), id: \.offset) { index, item in
                             if index > 0 { Hairline() }
@@ -252,7 +252,7 @@ struct Dashboard: View {
                     .card(padding: 0)
                 }
             }
-            Text("Local telemetry is untrusted evidence. Missing coverage or no findings does not establish that this Mac is safe. Remediation is never executed by this app.")
+            Text("La telemetría local es evidencia no confiable. La falta de cobertura o de hallazgos no demuestra que este Mac sea seguro. Esta app nunca ejecuta remediaciones.")
                 .font(.caption).foregroundStyle(.tertiary)
         }
     }
@@ -267,7 +267,7 @@ struct Dashboard: View {
                 }
                 Text(state.detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let status = model.status {
-                    Text(status.last_scan.map { "Last snapshot \(relativeTime($0))" } ?? "No snapshot collected yet")
+                    Text(status.last_scan.map { "Última instantánea \(relativeTime($0))" } ?? "Aún no se ha tomado ninguna instantánea")
                         .font(.caption).foregroundStyle(.tertiary)
                         .help(status.last_scan.map(fullTime) ?? "")
                 }
@@ -275,9 +275,9 @@ struct Dashboard: View {
             Spacer(minLength: 12)
             if let status = model.status {
                 HStack(spacing: 8) {
-                    Button(status.monitoring ? "Pause monitoring" : "Enable monitoring") { Task { await model.perform("monitoring") } }
+                    Button(status.monitoring ? "Pausar monitoreo" : "Activar monitoreo") { Task { await model.perform("monitoring") } }
                         .buttonStyle(ArkButton(prominent: false))
-                    Button("Take snapshot") { Task { await model.perform("scan") } }
+                    Button("Tomar instantánea") { Task { await model.perform("scan") } }
                         .buttonStyle(ArkButton())
                 }
                 .disabled(model.busy)
@@ -302,11 +302,11 @@ struct Dashboard: View {
     private var investigatorInput: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Ask the investigator").font(.headline)
-                Text("Uses recorded local evidence and the agent’s configured model provider.")
+                Text("Pregunta al investigador").font(.headline)
+                Text("Usa la evidencia local registrada y el proveedor de modelo configurado en el agente.")
                     .font(.callout).foregroundStyle(.secondary)
             }
-            TextField("What should Arkangel look into? (optional)", text: $model.question, axis: .vertical)
+            TextField("¿Qué debería revisar Arkangel? (opcional)", text: $model.question, axis: .vertical)
                 .textFieldStyle(.plain).lineLimit(2...5)
                 .inputField()
             HStack(spacing: 8) {
@@ -315,7 +315,7 @@ struct Dashboard: View {
                         .buttonStyle(ArkButton(prominent: false))
                 }
                 Spacer(minLength: 12)
-                Button("Investigate") {
+                Button("Investigar") {
                     selection = .investigations
                     Task { await model.investigate() }
                 }
@@ -336,15 +336,15 @@ struct Dashboard: View {
         }
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Picker("Kind", selection: $kindFilter) {
-                    Text("All").tag(String?.none)
+                Picker("Tipo", selection: $kindFilter) {
+                    Text("Todos").tag(String?.none)
                     ForEach(kinds, id: \.self) { Text(humanize($0)).tag(String?.some($0)) }
                 }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
                 Spacer()
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Filter evidence", text: $filter).textFieldStyle(.plain)
+                    TextField("Filtrar evidencia", text: $filter).textFieldStyle(.plain)
                     if !filter.isEmpty {
                         Button { filter = "" } label: { Image(systemName: "xmark.circle.fill") }
                             .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -355,10 +355,10 @@ struct Dashboard: View {
                 .background(Color.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.hairline))
             }
-            Text("\(visible.count) of \(model.observations.count) loaded observations")
+            Text("\(visible.count) de \(model.observations.count) observaciones cargadas")
                 .font(.caption).foregroundStyle(.secondary)
             if model.observations.isEmpty {
-                ContentUnavailableView("No observations loaded", systemImage: "waveform.path.ecg", description: Text("Take a local snapshot to collect evidence."))
+                ContentUnavailableView("No hay observaciones cargadas", systemImage: "waveform.path.ecg", description: Text("Toma una instantánea local para recolectar evidencia."))
                     .padding(.top, 30)
             } else if visible.isEmpty {
                 ContentUnavailableView.search(text: filter).padding(.top, 30)
@@ -387,7 +387,7 @@ struct Dashboard: View {
                 Text(relativeTime(item.timestamp)).font(.caption).foregroundStyle(.tertiary)
                     .help(fullTime(item.timestamp))
             }
-            DisclosureGroup("Recorded metadata") {
+            DisclosureGroup("Metadatos registrados") {
                 VStack(alignment: .leading, spacing: 8) {
                     if !item.attributes.isEmpty {
                         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
@@ -399,7 +399,7 @@ struct Dashboard: View {
                             }
                         }
                     }
-                    Text("\(item.source) · Evidence \(item.id)").foregroundStyle(.tertiary)
+                    Text("\(es(item.source)) · Evidencia \(item.id)").foregroundStyle(.tertiary)
                 }
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.primary)
@@ -423,14 +423,14 @@ struct Dashboard: View {
             if model.investigating {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Investigating recorded evidence. This can take up to two minutes.")
+                    Text("Investigando la evidencia registrada. Puede tardar hasta dos minutos.")
                         .foregroundStyle(.secondary)
                 }
                 .card()
                 .transition(.opacity)
             }
             if model.investigations.isEmpty && !model.investigating {
-                ContentUnavailableView("No investigations loaded", systemImage: "text.magnifyingglass", description: Text("Run an investigation to review hypotheses and evidence references."))
+                ContentUnavailableView("No hay investigaciones cargadas", systemImage: "text.magnifyingglass", description: Text("Ejecuta una investigación para revisar hipótesis y referencias de evidencia."))
                     .padding(.top, 30)
             }
             ForEach(model.investigations) { investigationCard($0) }
@@ -450,7 +450,7 @@ struct Dashboard: View {
                 Text(finding.summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if !finding.hypotheses.isEmpty {
-                subsection("Hypotheses") {
+                subsection("Hipótesis") {
                     ForEach(Array(finding.hypotheses.enumerated()), id: \.offset) { _, hypothesis in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -459,7 +459,7 @@ struct Dashboard: View {
                                 Pill(hypothesis.status)
                             }
                             if !hypothesis.counterevidence.isEmpty {
-                                Text("\(Text("Counterevidence").foregroundStyle(.primary))  \(hypothesis.counterevidence)")
+                                Text("\(Text("Contraevidencia").foregroundStyle(.primary))  \(hypothesis.counterevidence)")
                                     .font(.callout).foregroundStyle(.secondary)
                             }
                             evidenceLinks(hypothesis.evidence_ids)
@@ -479,7 +479,7 @@ struct Dashboard: View {
                                 Text(String(format: "%02d", index + 1))
                                     .font(.system(.caption, design: .monospaced)).foregroundStyle(.tertiary)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(step.tool).font(.system(.callout, design: .monospaced))
+                                    Text(es(step.tool)).font(.system(.callout, design: .monospaced))
                                     Text(step.summary).font(.callout).foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
@@ -488,20 +488,20 @@ struct Dashboard: View {
                     }
                     .padding(.top, 8)
                 } label: {
-                    Text("Investigation steps · \(finding.steps.count)").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    Text("Pasos de la investigación · \(finding.steps.count)").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                 }
             }
             if !finding.proposed_actions.isEmpty {
-                subsection("Proposed actions") {
+                subsection("Acciones propuestas") {
                     ForEach(Array(finding.proposed_actions.enumerated()), id: \.offset) { _, action in
                         HStack(alignment: .top, spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Proposal · \(action.title)").fontWeight(.medium)
+                                Text("Propuesta · \(action.title)").fontWeight(.medium)
                                 Text(action.description).font(.callout).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: 8)
-                            Pill("Not applied", .secondary)
+                            Pill("No aplicada", .secondary)
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -511,7 +511,7 @@ struct Dashboard: View {
                 }
             }
             if !finding.limitations.isEmpty {
-                subsection("Limitations") {
+                subsection("Limitaciones") {
                     ForEach(Array(finding.limitations.enumerated()), id: \.offset) { _, limitation in
                         Text("– \(limitation)").font(.callout).foregroundStyle(.secondary)
                     }
@@ -522,11 +522,11 @@ struct Dashboard: View {
         .textSelection(.enabled)
     }
 
-    /// Evidence references jump to the matching observation in the timeline.
+    /// Las referencias de evidencia saltan a la observación correspondiente en la línea de tiempo.
     private func evidenceLinks(_ ids: [String]) -> some View {
         HStack(spacing: 6) {
             if ids.isEmpty {
-                Text("No evidence cited").font(.caption).foregroundStyle(.tertiary)
+                Text("Sin evidencia citada").font(.caption).foregroundStyle(.tertiary)
             }
             ForEach(ids.prefix(4), id: \.self) { id in
                 Button(String(id.prefix(8))) {
@@ -540,10 +540,10 @@ struct Dashboard: View {
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(Color.surface, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.hairline))
-                .help("Show evidence \(id)")
+                .help("Mostrar evidencia \(id)")
             }
             if ids.count > 4 {
-                Text("+\(ids.count - 4) more").font(.caption).foregroundStyle(.tertiary)
+                Text("+\(ids.count - 4) más").font(.caption).foregroundStyle(.tertiary)
                     .help(ids.dropFirst(4).joined(separator: "\n"))
             }
         }
@@ -590,7 +590,7 @@ struct Pill: View {
     }
 }
 
-/// Monochrome button: solid foreground color when prominent, outlined otherwise.
+/// Botón monocromo: color sólido cuando es destacado y con contorno en los demás casos.
 struct ArkButton: ButtonStyle {
     var prominent = true
     @Environment(\.isEnabled) private var isEnabled
@@ -611,7 +611,7 @@ struct ArkButton: ButtonStyle {
 
 // MARK: Palette
 
-/// Vercel-like neutrals; color only appears in status dots.
+/// Neutros al estilo de Vercel; el color solo aparece en los puntos de estado.
 extension Color {
     static let canvas = dynamic(light: 0xFAFAFA, dark: 0x000000)
     static let surface = dynamic(light: 0xFFFFFF, dark: 0x0A0A0A)
@@ -653,11 +653,13 @@ extension View {
 // MARK: Formatting
 
 func humanize(_ text: String) -> String {
+    let label = es(text)
+    guard label == text else { return label }
     let spaced = text.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "tcp", with: "TCP")
     return spaced.prefix(1).uppercased() + spaced.dropFirst()
 }
 
-/// No-finding is deliberately blue, not green: it never implies safety.
+/// Sin hallazgos es azul a propósito, no verde: nunca implica seguridad.
 func toneColor(_ status: String) -> Color {
     switch status {
     case "available": .success
@@ -680,7 +682,7 @@ func evidenceSymbol(_ name: String) -> String {
     }
 }
 
-/// Python emits microsecond fractions, which the ISO8601 parser rejects.
+/// Python emite fracciones de microsegundos, que el analizador ISO8601 rechaza.
 private func parseDate(_ text: String) -> Date? {
     try? Date(text.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression), strategy: .iso8601)
 }

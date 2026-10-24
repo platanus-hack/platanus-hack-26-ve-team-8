@@ -43,7 +43,7 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(items[0]["attributes"]["executable"], "tool")
         self.assertNotIn("secret", str(items))
         self.assertNotIn("private", str(items))
-        self.assertIn("could not", coverage["detail"])
+        self.assertIn("no se pudieron", coverage["detail"])
 
     def test_command_denial_and_timeout(self):
         for exception, expected in ((PermissionError(), "denied"), (subprocess.TimeoutExpired("ps", 10), "unknown"), (FileNotFoundError(), "unavailable")):

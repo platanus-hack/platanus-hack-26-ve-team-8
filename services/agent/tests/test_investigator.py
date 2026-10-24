@@ -33,7 +33,7 @@ class InvestigationTests(unittest.TestCase):
             result = investigate(OBS)
         complete.assert_not_called()
         self.assertEqual(result["status"], "inconclusive")
-        self.assertIn("unavailable", result["summary"])
+        self.assertIn("no disponible", result["summary"])
         self.assertEqual(result["hypotheses"], [])
 
     @patch.dict(os.environ, ENV, clear=True)
@@ -62,7 +62,7 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_review")
         self.assertEqual(len(result["steps"]), 4)
         self.assertEqual(result["hypotheses"][0]["evidence_ids"], ["real-id"])
-        self.assertIn("UNTRUSTED DATA", payloads[0]["messages"][0]["content"])
+        self.assertIn("DATOS NO CONFIABLES", payloads[0]["messages"][0]["content"])
         self.assertEqual(payloads[1]["messages"][-1]["role"], "tool")
 
     @patch.dict(os.environ, ENV, clear=True)
@@ -122,7 +122,7 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual(len(evidence["items"]), 20)
         self.assertEqual(evidence["items"][0]["timestamp"], OBS[0]["timestamp"])
         self.assertEqual(result["hypotheses"][0]["evidence_ids"], ["id-20"])
-        self.assertTrue(any("coverage is partial" in limit for limit in result["limitations"]))
+        self.assertTrue(any("cobertura de recolección es parcial" in limit for limit in result["limitations"]))
 
     @patch.dict(os.environ, ENV, clear=True)
     def test_loop_budget_and_unknown_tools(self):

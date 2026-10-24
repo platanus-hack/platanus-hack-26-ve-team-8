@@ -1,4 +1,4 @@
-"""Small local evidence store. Callers serialize writes through the service lock."""
+"""Almacén local de evidencia. Quien llama serializa las escrituras con el lock del servicio."""
 
 import hashlib
 import json
@@ -27,7 +27,7 @@ class Store:
             """)
             columns = [row[1] for row in db.execute("PRAGMA table_info(current_state)")]
             if "observation_id" not in columns:
-                # Older baselines cannot be tied to retained evidence; prune drops them.
+                # Las líneas base antiguas no se pueden vincular a evidencia retenida; prune las elimina.
                 db.execute("ALTER TABLE current_state ADD COLUMN observation_id TEXT")
         path.chmod(0o600)
 
@@ -81,7 +81,7 @@ class Store:
         with self.connect() as db:
             db.execute("DELETE FROM observations WHERE julianday(timestamp) < julianday('now', '-7 days')")
             db.execute("DELETE FROM investigations WHERE julianday(created_at) < julianday('now', '-7 days')")
-            # A baseline without retained evidence would suppress the entity forever; re-record it next scan.
+            # Una línea base sin evidencia retenida suprimiría la entidad para siempre; se vuelve a registrar en el siguiente escaneo.
             db.execute("DELETE FROM current_state WHERE observation_id IS NULL OR observation_id NOT IN (SELECT id FROM observations)")
-            # Bound the baseline cache independently of history retention.
+            # Limita la caché de líneas base independientemente de la retención del historial.
             db.execute("DELETE FROM current_state WHERE rowid NOT IN (SELECT rowid FROM current_state ORDER BY rowid DESC LIMIT 20000)")

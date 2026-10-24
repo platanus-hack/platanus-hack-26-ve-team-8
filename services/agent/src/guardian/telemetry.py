@@ -1,4 +1,4 @@
-"""Read-only, metadata-only local snapshots. Observed strings are untrusted."""
+"""Instantáneas locales de solo lectura y solo metadatos. Las cadenas observadas no son confiables."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ def _observation(kind: str, source: str, entity: str, summary: str, attributes: 
 
 
 def parse_processes(output: str) -> list[dict]:
-    """Parse ps comm output, never requesting argv or environment."""
+    """Analiza la salida comm de ps sin pedir nunca argv ni el entorno."""
     observations = []
     for line in output.splitlines():
         fields = line.strip().split(None, 8)
@@ -34,7 +34,7 @@ def parse_processes(output: str) -> list[dict]:
         start_time = " ".join(fields[3:8])
         executable = fields[8].rsplit("/", 1)[-1]
         observations.append(_observation("process", "processes", f"{pid}:{start_time}",
-                                        f"Process {executable}",
+                                        f"Proceso {executable}",
                                         {"pid": pid, "parent_pid": parent_pid,
                                          "uid": uid, "executable": executable,
                                          "start_time_local": start_time}))
@@ -42,7 +42,7 @@ def parse_processes(output: str) -> list[dict]:
 
 
 def parse_listeners(output: str) -> list[dict]:
-    """Parse lsof field output. TCP socket addresses are local metadata."""
+    """Analiza la salida por campos de lsof. Las direcciones de sockets TCP son metadatos locales."""
     observations = []
     pid = None
     executable = "unknown"
@@ -57,7 +57,7 @@ def parse_listeners(output: str) -> list[dict]:
             executable = value.rsplit("/", 1)[-1]
         elif field == "n" and pid is not None:
             observations.append(_observation("tcp_listener", "tcp_listeners", f"{pid}:{value}",
-                                            f"TCP listener owned by {executable}",
+                                            f"Escucha TCP de {executable}",
                                             {"pid": pid, "executable": executable,
                                              "local_address": value}))
     return observations
@@ -72,19 +72,19 @@ def _command_snapshot(source: str, command: tuple[str, ...], parser) -> tuple[li
         result = subprocess.run(command, capture_output=True, text=True, timeout=10,
                                 check=False, shell=False)
     except FileNotFoundError:
-        return [], _coverage(source, "unavailable", "Inspection command is unavailable.")
+        return [], _coverage(source, "unavailable", "El comando de inspección no está disponible.")
     except PermissionError:
-        return [], _coverage(source, "denied", "Inspection command permission denied.")
+        return [], _coverage(source, "denied", "Permiso denegado para el comando de inspección.")
     except (OSError, subprocess.TimeoutExpired):
-        return [], _coverage(source, "unknown", "Inspection command failed or timed out.")
+        return [], _coverage(source, "unknown", "El comando de inspección falló o agotó el tiempo.")
     observations = parser(result.stdout)
-    # lsof returns 1 without output when no matching visible sockets exist.
+    # lsof devuelve 1 sin salida cuando no hay sockets visibles que coincidan.
     if source == "tcp_listeners" and result.returncode == 1 and not result.stdout and not result.stderr:
-        return [], _coverage(source, "partial", "No visible TCP listeners; other users' sockets may be hidden.")
+        return [], _coverage(source, "partial", "No hay escuchas TCP visibles; los sockets de otros usuarios pueden estar ocultos.")
     if result.returncode != 0 or result.stderr.strip():
         return observations, _coverage(source, "partial" if observations else "unknown",
-                                       "Inspection reported an error; visibility is incomplete.")
-    return observations, _coverage(source, "partial", "Current-user visibility; snapshot is incomplete and is not a safety verdict.")
+                                       "La inspección informó un error; la visibilidad es incompleta.")
+    return observations, _coverage(source, "partial", "Visibilidad del usuario actual; la instantánea es incompleta y no es un veredicto de seguridad.")
 
 
 def _launch_agents(directory: Path) -> tuple[list[dict], dict]:
@@ -93,17 +93,17 @@ def _launch_agents(directory: Path) -> tuple[list[dict], dict]:
     try:
         paths = list(directory.iterdir())
     except FileNotFoundError:
-        return [], _coverage(source, "available", "User LaunchAgents directory does not exist; system persistence is not inspected.")
+        return [], _coverage(source, "available", "El directorio LaunchAgents del usuario no existe; no se inspecciona la persistencia del sistema.")
     except PermissionError:
-        return [], _coverage(source, "denied", "User LaunchAgents directory access denied.")
+        return [], _coverage(source, "denied", "Acceso denegado al directorio LaunchAgents del usuario.")
     except OSError:
-        return [], _coverage(source, "unknown", "User LaunchAgents directory could not be inspected.")
+        return [], _coverage(source, "unknown", "No se pudo inspeccionar el directorio LaunchAgents del usuario.")
     incomplete = False
     for path in sorted(paths):
         if path.suffix != ".plist":
             continue
         try:
-            # Avoid following links outside the selected metadata directory.
+            # Evita seguir enlaces fuera del directorio de metadatos seleccionado.
             if path.is_symlink() or not path.is_file() or path.stat().st_size > 1_048_576:
                 incomplete = True
                 continue
@@ -130,20 +130,20 @@ def _launch_agents(directory: Path) -> tuple[list[dict], dict]:
             if isinstance(keep_alive, (bool, dict)):
                 attributes["keep_alive_configured"] = bool(keep_alive)
             observations.append(_observation("launch_agent", source, path.name,
-                                            "User LaunchAgent configuration present; loaded state unknown.", attributes))
+                                            "Configuración de LaunchAgent del usuario presente; estado de carga desconocido.", attributes))
         except (OSError, ValueError, TypeError, plistlib.InvalidFileException, OverflowError, ExpatError):
             incomplete = True
-    detail = "Only user LaunchAgents metadata; loaded state and system persistence are unknown."
+    detail = "Solo metadatos de LaunchAgents del usuario; el estado de carga y la persistencia del sistema son desconocidos."
     if incomplete:
-        detail += " Some entries could not be read or parsed."
+        detail += " Algunas entradas no se pudieron leer o analizar."
     return observations, _coverage(source, "partial", detail)
 
 
 def collect_snapshot() -> tuple[list[dict], list[dict]]:
-    """Inspect this Mac only. No changes, scans, shell, daemon, or stored state."""
+    """Inspecciona solo este Mac. Sin cambios, escaneos, shell, daemon ni estado almacenado."""
     sources = ("processes", "tcp_listeners", "user_launch_agents")
     if platform.system() != "Darwin":
-        return [], [_coverage(source, "unsupported", "This collector requires macOS.") for source in sources]
+        return [], [_coverage(source, "unsupported", "Este recolector requiere macOS.") for source in sources]
     observations = []
     coverage = []
     for source, command, parser in (("processes", PS_COMMAND, parse_processes),
@@ -155,5 +155,5 @@ def collect_snapshot() -> tuple[list[dict], list[dict]]:
     observations.extend(items)
     coverage.append(status)
     coverage.append(_coverage("osquery", "available" if shutil.which("osqueryi") else "unavailable",
-                              "Executable availability only; osquery is not run and no daemon is started."))
+                              "Solo disponibilidad del ejecutable; osquery no se ejecuta y no se inicia ningún daemon."))
     return observations, coverage

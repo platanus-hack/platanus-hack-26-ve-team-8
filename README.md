@@ -1,66 +1,70 @@
 # Arkangel
 
-A macOS defensive investigator: local observations, an AI that chooses evidence
-queries, and a native interface for reviewing findings. This is an early prototype,
-not a validated antivirus or complete endpoint monitor.
+Un investigador defensivo para macOS: observaciones locales, una IA que elige las
+consultas de evidencia y una interfaz nativa para revisar los hallazgos. Es un
+prototipo temprano, no un antivirus validado ni un monitor de endpoints completo.
 
 ## Monorepo
 
-- `apps/macos`: native SwiftUI menu-bar app and Unix socket client.
-- `services/agent`: Python local service, SQLite history, collectors, and model-led investigation.
-- `packages/contracts`: shared local API contract.
-- `docs`: architecture and operational boundaries.
+- `apps/macos`: app nativa de SwiftUI para la barra de menús y cliente de socket Unix.
+- `services/agent`: servicio local en Python, historial en SQLite, recolectores e investigación guiada por modelo.
+- `packages/contracts`: contrato compartido de la API local.
+- `docs`: arquitectura y límites operativos.
 
-## First-time setup
+## Configuración inicial
 
-Python 3.11+ and the official Claude Agent SDK are required for Anthropic investigations.
-Install the pinned SDK and local package into a repository-only virtual environment:
+Se necesitan Python 3.11+ y el Claude Agent SDK oficial para las investigaciones con
+Anthropic. Instala el SDK fijado y el paquete local en un entorno virtual propio del
+repositorio:
 
 ```sh
 bash scripts/setup-agent.sh
 ```
 
-If your default Python runs under Rosetta, choose a native Python 3.11+ for the
-initial environment: `GUARDIAN_PYTHON=/path/to/native/python3 bash scripts/setup-agent.sh`.
-An existing `.venv` is preserved.
+Si tu Python predeterminado se ejecuta con Rosetta, elige un Python 3.11+ nativo para
+el entorno inicial: `GUARDIAN_PYTHON=/ruta/a/python3/nativo bash scripts/setup-agent.sh`.
+Un `.venv` existente se conserva.
 
-Open the native app, enter your Anthropic API key in **Connect your investigator**,
-and review the cloud-processing/API-cost checkbox. Connect starts a local service if
-needed, verifies key access to Haiku 5.5, and saves the key in **macOS Keychain**.
-Verification is a model-metadata request, not paid inference. It does not prove that
-the account has enough credits for an investigation. Rejected keys and connection
-failures leave setup open with a retryable message.
+Abre la app nativa, introduce tu clave de API de Anthropic en **Conecta tu investigador**
+y revisa la casilla de procesamiento en la nube y costos de API. Conectar inicia un
+servicio local si hace falta, verifica que la clave tenga acceso a Haiku 5.5 y guarda la
+clave en el **Llavero de macOS**. La verificación es una solicitud de metadatos del
+modelo, no una inferencia de pago, y no demuestra que la cuenta tenga créditos
+suficientes para una investigación. Las claves rechazadas y los fallos de conexión
+dejan la configuración abierta con un mensaje para reintentar.
 
-No API key is stored in UserDefaults, SQLite, source code, or process arguments.
-Keys passed to the service remain in its process environment for SDK authentication.
-Use **Provider setup…** in the menu to replace the key. The current developer app
-requires this checkout and its `.venv`; it is not a standalone distributable package.
+Ninguna clave de API se guarda en UserDefaults, SQLite, el código fuente ni los
+argumentos del proceso. Las claves enviadas al servicio permanecen en el entorno de
+su proceso para la autenticación del SDK. Usa **Configurar proveedor…** en el menú
+para reemplazar la clave. La app de desarrollo actual requiere este repositorio y su
+`.venv`; no es un paquete distribuible independiente.
 
-## Run the local service manually
+## Ejecutar el servicio local manualmente
 
-From the repository root, as an alternative to the app-managed service:
+Desde la raíz del repositorio, como alternativa al servicio gestionado por la app:
 
 ```sh
 PYTHONPATH=services/agent/src .venv/bin/python -m guardian serve --watch
 ```
 
-This runs in the foreground until Ctrl-C. It does not install a launch agent or
-change system permissions. The app connects to `/tmp/guardian-<uid>/agent.sock`.
-SQLite history is stored under `~/Library/Application Support/Guardian` with
-seven-day retention. Override storage using `--data-dir /path/to/private-directory`.
-Stopping monitoring pauses snapshots; stopping the foreground process ends the service.
+Se ejecuta en primer plano hasta pulsar Ctrl-C. No instala un launch agent ni cambia
+permisos del sistema. La app se conecta a `/tmp/guardian-<uid>/agent.sock`. El
+historial de SQLite se guarda en `~/Library/Application Support/Guardian` con una
+retención de siete días. Cambia el almacenamiento con `--data-dir /ruta/a/directorio-privado`.
+Detener el monitoreo pausa las instantáneas; detener el proceso en primer plano
+termina el servicio.
 
-To take one read-only local snapshot:
+Para tomar una única instantánea local de solo lectura:
 
 ```sh
 PYTHONPATH=services/agent/src .venv/bin/python -m guardian scan
 ```
 
-## Connect a model
+## Conectar un modelo
 
-Anthropic is the default provider, using **Claude Haiku 5.5** (`claude-haiku-5-5`).
-Set `ANTHROPIC_API_KEY` privately in the service's environment (not in chat or source
-code). Then start the service from that same terminal:
+Anthropic es el proveedor predeterminado, con **Claude Haiku 5.5** (`claude-haiku-5-5`).
+Define `ANTHROPIC_API_KEY` de forma privada en el entorno del servicio (no en un chat
+ni en el código fuente). Después inicia el servicio desde esa misma terminal:
 
 ```sh
 export GUARDIAN_PROVIDER=anthropic
@@ -68,76 +72,89 @@ export GUARDIAN_ALLOW_CLOUD=1
 PYTHONPATH=services/agent/src .venv/bin/python -m guardian serve --watch --auto-investigate
 ```
 
-`GUARDIAN_ALLOW_CLOUD=1` permits paid requests to Anthropic containing minimized
-metadata: opaque identifiers, observation categories, timestamps, and numeric process
-relationships. Raw private paths, code, secrets, and the free-text question are withheld.
-The API key is used only in the authentication header, not stored in SQLite or sent
-in model prompts. Override the model with `GUARDIAN_MODEL` if needed.
+`GUARDIAN_ALLOW_CLOUD=1` permite solicitudes de pago a Anthropic con metadatos
+minimizados: identificadores opacos, categorías de observación, marcas de tiempo y
+relaciones numéricas entre procesos. Se omiten las rutas privadas, el código, los
+secretos y la pregunta en texto libre. La clave de API solo se usa en la cabecera de
+autenticación; no se guarda en SQLite ni se envía en los prompts del modelo. Cambia el
+modelo con `GUARDIAN_MODEL` si lo necesitas.
 
-The service uses the **Claude Agent SDK**, including its bundled Claude runtime.
-The SDK owns the Anthropic agent loop; Guardian supplies read-only evidence tools,
-privacy filtering, and citation validation. Built-in shell/file tools and project
-settings are disabled. Investigations use isolated temporary runtime configuration
-and disable session persistence. No existing Claude subscription login is used.
-Its status displays the provider/model and whether cloud access is disabled. Restart
-the service after changing its environment when using this manual configuration.
+El servicio usa el **Claude Agent SDK**, incluido su runtime de Claude. El SDK gestiona
+el bucle del agente de Anthropic; Guardian aporta herramientas de evidencia de solo
+lectura, filtrado de privacidad y validación de citas. Las herramientas integradas de
+shell y archivos y la configuración del proyecto están desactivadas. Las
+investigaciones usan una configuración temporal aislada y desactivan la persistencia
+de sesiones. No se usa ningún inicio de sesión existente de una suscripción a Claude.
+Su estado muestra el proveedor y el modelo, y si el acceso a la nube está desactivado.
+Con esta configuración manual, reinicia el servicio después de cambiar su entorno.
 
-### Local model alternative
+Las investigaciones responden en español; las claves JSON y los valores de estado del
+protocolo se mantienen en inglés.
 
-Use an already-running local OpenAI-compatible model endpoint that supports tool
-calling. Guardian does not install a model runner or choose/download a model.
+### Alternativa con modelo local
+
+Usa un endpoint de modelo local compatible con OpenAI que ya esté en ejecución y admita
+llamadas a herramientas. Guardian no instala un ejecutor de modelos ni elige o descarga
+un modelo.
 
 ```sh
 export GUARDIAN_PROVIDER=openai
 export GUARDIAN_MODEL_ENDPOINT=http://127.0.0.1:1234/v1/chat/completions
-export GUARDIAN_MODEL=your-local-model-id
+export GUARDIAN_MODEL=id-de-tu-modelo-local
 PYTHONPATH=services/agent/src .venv/bin/python -m guardian serve --watch --auto-investigate
 ```
 
-The URL must include `/v1/chat/completions`. Optional `GUARDIAN_MODEL_KEY` is read
-from the environment; never put a real key in the repository. Automatic investigation
-reviews changed evidence at most once per minute, and performs an exploratory review
-at least every fifteen minutes while monitoring is enabled. Model calls do not block
-the snapshot collector. Manual investigation is available in the app or CLI:
+La URL debe incluir `/v1/chat/completions`. La variable opcional `GUARDIAN_MODEL_KEY`
+se lee del entorno; nunca pongas una clave real en el repositorio. La investigación
+automática revisa la evidencia modificada como máximo una vez por minuto y hace una
+revisión exploratoria al menos cada quince minutos mientras el monitoreo está activo.
+Las llamadas al modelo no bloquean el recolector de instantáneas. La investigación
+manual está disponible en la app o en la CLI:
 
 ```sh
-PYTHONPATH=services/agent/src .venv/bin/python -m guardian investigate --question 'What deserves investigation?'
+PYTHONPATH=services/agent/src .venv/bin/python -m guardian investigate --question '¿Qué merece investigarse?'
 ```
 
-Without a configured API key or local model, investigations report inconclusive/unavailable. There is
-no simulated AI fallback. Remote HTTPS endpoints require `GUARDIAN_ALLOW_CLOUD=1`;
-their evidence is aggressively minimized, reducing investigative usefulness.
-No hosted model calls are made by tests.
+Sin una clave de API configurada o un modelo local, las investigaciones se informan
+como no concluyentes o no disponibles. No hay una IA simulada de respaldo. Los
+endpoints HTTPS remotos requieren `GUARDIAN_ALLOW_CLOUD=1`; su evidencia se minimiza
+de forma agresiva, lo que reduce su utilidad para investigar. Las pruebas no hacen
+llamadas a modelos alojados.
 
-## Native app
+## App nativa
 
-See [macOS instructions](apps/macos/README.md). The app never installs dependencies
-or registers login items. Connect may launch an app-owned foreground service, which
-stops when the app quits. An externally launched service is not stopped by the app.
+Consulta las [instrucciones para macOS](apps/macos/README.md). La app nunca instala
+dependencias ni registra elementos de inicio. Conectar puede lanzar un servicio en
+primer plano propiedad de la app, que se detiene al salir de ella. La app no detiene
+un servicio lanzado externamente.
 
-## Verification
+## Verificación
 
 ```sh
 PYTHONPATH=services/agent/src .venv/bin/python -m unittest discover -s services/agent/tests -v
 ```
 
-Tests use synthetic records and mocked model/OS responses, plus a temporary Unix
-socket. Do not run project builds as verification. Use Swift type checking as
-documented in the macOS app instructions.
+Las pruebas usan registros sintéticos y respuestas simuladas del modelo y del sistema
+operativo, además de un socket Unix temporal. No ejecutes compilaciones del proyecto
+como verificación. Usa la comprobación de tipos de Swift como se documenta en las
+instrucciones de la app para macOS.
 
-## Current limits
+## Límites actuales
 
-- Snapshot process and TCP listener observation, plus metadata from user LaunchAgents.
-- No outbound connection history, filesystem access tracing, remote scans, full-disk
-  inspection, or guaranteed short-lived process capture.
-- osquery availability is detected only; its integration and Endpoint Security
-  permission evaluation remain future work.
-- Stored observations describe things seen or changed, not a complete execution log.
-  Absence from a later snapshot does not prove termination or cleanup.
-- Model output is evidence-linked but still fallible. No claimed protection against
-  unknown attacks or AI-driven attackers.
-- Actions are proposals only. No stop-process, delete-file, firewall, or persistence
-  modification capability is exposed.
+- Instantáneas de procesos y escuchas TCP, además de metadatos de los LaunchAgents del usuario.
+- Sin historial de conexiones salientes, rastreo de acceso al sistema de archivos,
+  escaneos remotos, inspección completa del disco ni captura garantizada de procesos
+  de corta duración.
+- Solo se detecta si osquery está disponible; su integración y la evaluación de
+  permisos de Endpoint Security quedan como trabajo futuro.
+- Las observaciones guardadas describen lo que se vio o cambió, no un registro de
+  ejecución completo. Que algo no aparezca en una instantánea posterior no demuestra
+  que terminó o se limpió.
+- La salida del modelo está vinculada a evidencia, pero sigue pudiendo fallar. No se
+  afirma protección frente a ataques desconocidos ni atacantes guiados por IA.
+- Las acciones son solo propuestas. No se expone ninguna capacidad para detener
+  procesos, borrar archivos, modificar el firewall o cambiar la persistencia.
 
-No HolmesGPT/Vigil code is vendored. Anthropic investigations use the official
-Claude Agent SDK; local OpenAI-compatible models retain the small custom loop.
+No se incluye código de HolmesGPT/Vigil. Las investigaciones con Anthropic usan el
+Claude Agent SDK oficial; los modelos locales compatibles con OpenAI mantienen el
+pequeño bucle propio.

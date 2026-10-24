@@ -1,7 +1,7 @@
-"""Official Claude Agent SDK runtime with only recorded-evidence MCP tools.
+"""Runtime oficial de Claude Agent SDK con solo herramientas MCP de evidencia registrada.
 
-Imports are lazy so local endpoint mode remains usable without the optional runtime
-being installed. No SDK transcripts, credentials, or provider errors are surfaced.
+Las importaciones son diferidas para que el modo de endpoint local funcione sin el
+runtime opcional. No se exponen transcripciones del SDK, credenciales ni errores del proveedor.
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ async def _run(*, model, key, system_prompt, prompt, tools, execute_tool,
                 return {"content": [{"type": "text", "text": json.dumps(payload)}]}
             except Exception:
                 callback_failed = True
-                return {"is_error": True, "content": [{"type": "text", "text": "Evidence tool rejected the request."}]}
+                return {"is_error": True, "content": [{"type": "text", "text": "La herramienta de evidencia rechazó la solicitud."}]}
 
         return tool(name, function["description"], function["parameters"])(callback)
 
@@ -67,11 +67,11 @@ async def _run(*, model, key, system_prompt, prompt, tools, execute_tool,
     async def permission(tool_name, arguments, context):
         if tool_name in allowed:
             return PermissionResultAllow()
-        return PermissionResultDeny(message="Only Guardian recorded-evidence tools are permitted.", interrupt=True)
+        return PermissionResultDeny(message="Solo se permiten las herramientas de evidencia registrada de Guardian.", interrupt=True)
 
     server = create_sdk_mcp_server(name="guardian", version="1.0.0", tools=registered)
-    # The SDK launches its bundled CLI, never an arbitrary command supplied by a
-    # model. Fresh config/cwd excludes existing login sessions and project files.
+    # El SDK lanza su CLI incluida, nunca un comando arbitrario propuesto por un
+    # modelo. Config/cwd nuevos excluyen sesiones existentes y archivos del proyecto.
     with tempfile.TemporaryDirectory(prefix="guardian-claude-") as isolated:
         options = ClaudeAgentOptions(
             model=model, system_prompt=system_prompt, tools=[], allowed_tools=sorted(allowed),
@@ -94,23 +94,23 @@ async def _run(*, model, key, system_prompt, prompt, tools, execute_tool,
                 async for message in client.receive_response():
                     received_bytes += len(repr(message).encode())
                     if received_bytes > max_response_bytes or callback_failed:
-                        raise ValueError("Claude response or tool budget exceeded")
+                        raise ValueError("Se superó el presupuesto de respuesta o de herramientas de Claude")
                     if isinstance(message, ResultMessage):
                         if message.is_error or message.subtype != "success":
-                            raise ValueError("Claude investigation did not complete")
+                            raise ValueError("La investigación de Claude no se completó")
                         final = getattr(message, "structured_output", None)
                         if final is None:
                             final = json.loads(message.result or "")
                         if not isinstance(final, dict):
-                            raise ValueError("Invalid structured investigation")
+                            raise ValueError("Investigación estructurada no válida")
                         return final
-    raise ValueError("Claude returned no structured result")
+    raise ValueError("Claude no devolvió un resultado estructurado")
 
 
 def run_claude(**kwargs) -> dict:
     try:
         return asyncio.run(_run(**kwargs))
     except Exception:
-        # SDK error strings can include subprocess output. Return only a fixed
-        # local error; neither logs nor investigation output include that content.
-        raise ValueError("Claude Agent SDK unavailable or investigation failed") from None
+        # Los errores del SDK pueden incluir salida del subproceso. Devuelve solo un error
+        # local fijo; ni los registros ni la investigación incluyen ese contenido.
+        raise ValueError("Claude Agent SDK no disponible o la investigación falló") from None

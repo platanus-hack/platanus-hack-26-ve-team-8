@@ -1,7 +1,7 @@
 import SceneKit
 import SwiftUI
 
-/// Demo-first view: detections since baseline, Claude's steps as they happen, and the verdict.
+/// Vista pensada para la demo: detecciones desde la línea base, los pasos de Claude en vivo y el veredicto.
 struct LiveView: View {
     @Bindable var model: GuardianModel
     let openReport: () -> Void
@@ -30,7 +30,7 @@ struct LiveView: View {
             while !Task.isCancelled {
                 if model.baseline == nil && !model.observations.isEmpty { model.setBaseline() }
                 await model.pollProgress()
-                // Faster than the dashboard's 15 s refresh so detections land within a few seconds.
+                // Más rápido que la actualización de 15 s del panel para que las detecciones aparezcan en pocos segundos.
                 if tick % 3 == 0 { await model.refresh() }
                 tick += 1
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
@@ -49,16 +49,16 @@ struct LiveView: View {
             Text(headline.detail).font(.callout).foregroundStyle(.secondary)
             Spacer()
             HStack(spacing: 8) {
-                Text("Drag to rotate").font(.caption).foregroundStyle(.tertiary)
+                Text("Arrastra para girar").font(.caption).foregroundStyle(.tertiary)
                 Spacer()
                 if model.status?.monitoring == false {
-                    Button("Enable monitoring") { Task { await model.perform("monitoring") } }
+                    Button("Activar monitoreo") { Task { await model.perform("monitoring") } }
                         .buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
                 }
-                Button("Reset baseline") { model.setBaseline() }
+                Button("Restablecer línea base") { model.setBaseline() }
                     .buttonStyle(ArkButton(prominent: false))
                     .disabled(model.observations.isEmpty)
-                Button("Investigate") { Task { await model.investigate() } }
+                Button("Investigar") { Task { await model.investigate() } }
                     .buttonStyle(ArkButton())
                     .disabled(investigating || model.status == nil || model.status?.onboarding_required == true)
             }
@@ -69,17 +69,17 @@ struct LiveView: View {
 
     private var headline: (title: String, detail: String, color: Color) {
         if investigating {
-            return ("Claude is investigating", "Reading recorded evidence with read-only tools.", .white)
+            return ("Claude está investigando", "Leyendo la evidencia registrada con herramientas de solo lectura.", .white)
         }
         guard let status = model.status else {
-            return ("Agent disconnected", "Connect from Overview to start defending this Mac.", .secondary)
+            return ("Agente desconectado", "Conéctate desde Resumen para empezar a defender este Mac.", .secondary)
         }
         if !threats.isEmpty {
-            return ("\(threats.count) new \(threats.count == 1 ? "threat" : "threats") detected",
-                    "New persistence or listeners since baseline.", .danger)
+            return (threats.count == 1 ? "1 amenaza nueva detectada" : "\(threats.count) amenazas nuevas detectadas",
+                    "Nueva persistencia o escuchas desde la línea base.", .danger)
         }
-        return (status.monitoring ? "Watching this Mac" : "Monitoring paused",
-                "No new persistence or listeners since baseline.", status.monitoring ? .success : .warning)
+        return (status.monitoring ? "Vigilando este Mac" : "Monitoreo en pausa",
+                "Sin nueva persistencia ni escuchas desde la línea base.", status.monitoring ? .success : .warning)
     }
 
     // MARK: Cards
@@ -89,14 +89,14 @@ struct LiveView: View {
         let newProcesses = detections.count - threats.count
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Detections").font(.headline)
+                Text("Detecciones").font(.headline)
                 Spacer()
                 if let date = model.baselineDate {
-                    Text("since \(date.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.tertiary)
+                    Text("desde las \(date.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.tertiary)
                 }
             }
             if threats.isEmpty {
-                Text("No new persistence or listeners since baseline.").font(.callout).foregroundStyle(.secondary)
+                Text("Sin nueva persistencia ni escuchas desde la línea base.").font(.callout).foregroundStyle(.secondary)
             }
             ForEach(threats.prefix(6)) { item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -112,10 +112,10 @@ struct LiveView: View {
                 .transition(.opacity)
             }
             if threats.count > 6 {
-                Text("+\(threats.count - 6) more").font(.caption).foregroundStyle(.tertiary)
+                Text("+\(threats.count - 6) más").font(.caption).foregroundStyle(.tertiary)
             }
             if newProcesses > 0 {
-                Text("\(newProcesses) new \(newProcesses == 1 ? "process" : "processes") (normal activity is included)")
+                Text("\(newProcesses) \(newProcesses == 1 ? "proceso nuevo" : "procesos nuevos") (incluye actividad normal)")
                     .font(.caption).foregroundStyle(.tertiary)
             }
         }
@@ -133,12 +133,12 @@ struct LiveView: View {
                 if investigating { ProgressView().controlSize(.small) }
             }
             if steps.isEmpty {
-                Text(investigating ? "Starting investigation…" : "Press Investigate to let Claude examine the evidence.")
+                Text(investigating ? "Iniciando investigación…" : "Pulsa Investigar para que Claude examine la evidencia.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             ForEach(Array(steps.suffix(7).enumerated()), id: \.offset) { _, step in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(step.tool).font(.system(.caption, design: .monospaced))
+                    Text(es(step.tool)).font(.system(.caption, design: .monospaced))
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Color.canvas, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.hairline))
@@ -147,7 +147,7 @@ struct LiveView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if !steps.isEmpty && !investigating {
-                Text("\(steps.count) read-only \(steps.count == 1 ? "step" : "steps") · no commands executed")
+                Text("\(steps.count) \(steps.count == 1 ? "paso" : "pasos") de solo lectura · ningún comando ejecutado")
                     .font(.caption).foregroundStyle(.tertiary)
             }
         }
@@ -162,18 +162,18 @@ struct LiveView: View {
                 Pill(finding.status)
                 Text(relativeTime(finding.created_at)).font(.caption).foregroundStyle(.tertiary)
                 Spacer()
-                Button("Full report", action: openReport).buttonStyle(ArkButton(prominent: false))
+                Button("Informe completo", action: openReport).buttonStyle(ArkButton(prominent: false))
             }
             Text(finding.title).font(.title3.weight(.semibold))
             Text(finding.summary).foregroundStyle(.secondary).lineLimit(3)
             if let action = finding.proposed_actions.first {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Proposal · \(action.title)").fontWeight(.medium)
+                        Text("Propuesta · \(action.title)").fontWeight(.medium)
                         Text(action.description).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                     }
                     Spacer(minLength: 8)
-                    Pill("Not applied", .secondary)
+                    Pill("No aplicada", .secondary)
                 }
                 .padding(12)
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -195,7 +195,7 @@ struct LiveView: View {
         var nodes: [DefenseState.Node] = []
         for item in model.observations where seen.insert(item.key).inserted {
             if item.kind == "process" {
-                // ponytail: newest 120 processes keep the scene legible; raise if the orbit looks sparse.
+                // ponytail: los 120 procesos más recientes mantienen la escena legible; súbelo si la órbita se ve vacía.
                 processes += 1
                 if processes > 120 && !cited.contains(item.id) { continue }
             }
@@ -243,7 +243,7 @@ struct DefenseSceneView: NSViewRepresentable {
     }
 }
 
-/// The Mac is the core, wrapped in a wireframe shield; evidence orbits on one ring per kind.
+/// El Mac es el núcleo, envuelto en un escudo de alambre; la evidencia orbita en un anillo por tipo.
 @MainActor
 final class DefenseScene {
     let scene = SCNScene()
@@ -336,7 +336,7 @@ final class DefenseScene {
         dot.position = position
         container.addChildNode(dot)
         if item.level == .threat || item.level == .cited {
-            // A beam back to the core shows what is touching this Mac, or what Claude just read.
+            // Un rayo hacia el núcleo muestra qué está tocando este Mac o qué acaba de leer Claude.
             container.addChildNode(beam(to: position, color: color.withAlphaComponent(0.6)))
         }
         if item.level == .threat {
@@ -362,7 +362,7 @@ final class DefenseScene {
         return material
     }
 
-    /// Stable across launches, unlike Hasher, so evidence keeps its place in orbit.
+    /// Estable entre ejecuciones, a diferencia de Hasher, para que la evidencia conserve su lugar en la órbita.
     private static func fnv(_ text: String) -> UInt64 {
         text.utf8.reduce(14_695_981_039_346_656_037) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
     }

@@ -1,4 +1,4 @@
-"""Provider configuration for Claude Agent SDK and legacy local endpoints."""
+"""Configuración del proveedor para Claude Agent SDK y endpoints locales heredados."""
 
 import os
 from dataclasses import dataclass, field

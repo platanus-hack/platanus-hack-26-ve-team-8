@@ -17,7 +17,7 @@ struct ProviderKeychain {
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let data = result as? Data,
               let key = String(data: data, encoding: .utf8) else {
-            throw ClientError(message: "Could not read the saved key from macOS Keychain.")
+            throw ClientError(message: "No se pudo leer la clave guardada en el Llavero de macOS.")
         }
         return key
     }
@@ -27,13 +27,13 @@ struct ProviderKeychain {
         let updated = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if updated == errSecSuccess { return }
         guard updated == errSecItemNotFound else {
-            throw ClientError(message: "Provider connected, but macOS Keychain could not save the key. Retry setup.")
+            throw ClientError(message: "Proveedor conectado, pero el Llavero de macOS no pudo guardar la clave. Repite la configuración.")
         }
         var item = query
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else {
-            throw ClientError(message: "Provider connected, but macOS Keychain could not save the key. Retry setup.")
+            throw ClientError(message: "Proveedor conectado, pero el Llavero de macOS no pudo guardar la clave. Repite la configuración.")
         }
     }
 }
@@ -50,21 +50,21 @@ final class LocalRuntime {
         if let configured = ProcessInfo.processInfo.environment["GUARDIAN_REPO_ROOT"] {
             root = URL(fileURLWithPath: configured, isDirectory: true)
         } else {
-            // Source lives at apps/macos/Sources/Guardian/LocalRuntime.swift.
+            // El código fuente está en apps/macos/Sources/Guardian/LocalRuntime.swift.
             root = URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent().deletingLastPathComponent()
                 .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         }
         let python = root.appendingPathComponent(".venv/bin/python")
         guard FileManager.default.isExecutableFile(atPath: python.path) else {
-            throw ClientError(message: "Python environment missing. In the Arkangel repository run: bash scripts/setup-agent.sh. Set GUARDIAN_REPO_ROOT if this executable was moved. The app does not install dependencies.")
+            throw ClientError(message: "Falta el entorno de Python. En el repositorio de Arkangel ejecuta: bash scripts/setup-agent.sh. Define GUARDIAN_REPO_ROOT si se movió este ejecutable. La app no instala dependencias.")
         }
         let child = Process()
         child.executableURL = python
         child.arguments = ["-m", "guardian", "serve", "--watch"]
         child.currentDirectoryURL = root
         var environment = ProcessInfo.processInfo.environment
-        // Provider credentials travel only in the socket configure request.
+        // Las credenciales del proveedor viajan solo en la solicitud configure del socket.
         for name in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "GUARDIAN_MODEL_KEY", "GUARDIAN_ALLOW_CLOUD", "GUARDIAN_MODEL_ENDPOINT", "GUARDIAN_MODEL", "GUARDIAN_PROVIDER"] {
             environment.removeValue(forKey: name)
         }
@@ -74,7 +74,7 @@ final class LocalRuntime {
         child.standardError = FileHandle.nullDevice
         child.standardInput = FileHandle.nullDevice
         do { try child.run() } catch {
-            throw ClientError(message: "Could not start Arkangel. Check GUARDIAN_REPO_ROOT and the repository Python environment.")
+            throw ClientError(message: "No se pudo iniciar Arkangel. Revisa GUARDIAN_REPO_ROOT y el entorno de Python del repositorio.")
         }
         process = child
     }

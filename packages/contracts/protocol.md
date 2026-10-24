@@ -1,55 +1,69 @@
-# Guardian local protocol v1
+# Protocolo local de Guardian v1
 
-Transport: newline-delimited JSON over a Unix domain socket. One request and one
-response per connection; no TCP port. Default socket: /tmp/guardian-<uid>/agent.sock
-(override with GUARDIAN_SOCKET on both sides), directory mode 0700. Request: {"id":"uuid", "method":"status", "params":{}}.
-Response: {"id":"uuid", "result": ...} or {"id":"uuid", "error":{"message":"..."}}.
+Transporte: JSON delimitado por saltos de línea sobre un socket de dominio Unix. Una
+solicitud y una respuesta por conexión; sin puerto TCP. Socket predeterminado:
+/tmp/guardian-<uid>/agent.sock (se cambia con GUARDIAN_SOCKET en ambos lados), con el
+directorio en modo 0700. Solicitud: {"id":"uuid", "method":"status", "params":{}}.
+Respuesta: {"id":"uuid", "result": ...} o {"id":"uuid", "error":{"message":"..."}}.
 
-Methods:
+Idioma: los nombres de métodos, campos y valores enumerados (status, source, kind,
+tool, "not_configured") se mantienen en inglés porque forman parte del contrato. Todo
+el texto libre para personas (mensajes de error, summary, detail, title, statement,
+counterevidence, limitations, descripciones de acciones) se escribe en español. Los
+clientes traducen los valores enumerados solo al mostrarlos.
+
+Métodos:
 - status -> {"monitoring":bool,"provider":str,"coverage":[{"source":str,"status":str,"detail":str}],"observation_count":int,"last_scan":str|null,"onboarding_required":bool,"sdk_available":bool}
-- provider.configure -> status (params api_key string, allow_cloud true). User-initiated
-  onboarding checks SDK availability then validates key/model via Anthropic Models GET.
-  No inference call. Success selects Anthropic / claude-haiku-5-5 for the service
-  process only; native client persists the key in Keychain. No key in response/logs/DB.
-- observations -> {"items":[Observation]} (params limit default 100 max 500)
+- provider.configure -> status (params api_key string, allow_cloud true). La
+  configuración inicial, iniciada por el usuario, comprueba la disponibilidad del SDK y
+  después valida la clave y el modelo con un GET a la API Models de Anthropic. Sin
+  llamada de inferencia. Si tiene éxito, selecciona Anthropic / claude-haiku-5-5 solo
+  para el proceso del servicio; el cliente nativo guarda la clave en el Llavero. La
+  clave nunca aparece en respuestas, registros ni en la base de datos.
+- observations -> {"items":[Observation]} (params limit, predeterminado 100, máximo 500)
 - investigations -> {"items":[Investigation]}
-- scan -> status (explicit read-only local snapshot)
-- investigate -> Investigation (params question optional; uses recorded evidence)
-- monitoring.set -> status (params enabled bool; foreground service lifecycle only)
+- scan -> status (instantánea local explícita de solo lectura)
+- investigate -> Investigation (params question opcional; usa la evidencia registrada)
+- monitoring.set -> status (params enabled bool; solo afecta al ciclo de vida del servicio en primer plano)
 - investigation.progress -> {"active":bool,"started_at":str|null,"steps":[{"tool":str,"summary":str,
-  "evidence_ids":[str]}]} (latest investigation, including one started by --watch; poll while active)
+  "evidence_ids":[str]}]} (última investigación, incluida una iniciada por --watch; consultar periódicamente mientras esté activa)
 
-Observation: {"id":str,"timestamp":ISO8601 UTC str,"kind":str,
+Observation: {"id":str,"timestamp":str ISO8601 UTC,"kind":str,
 "source":str,"entity":str,"summary":str,"attributes":object}.
 Investigation: {"id":str,"created_at":str,"status":str,"title":str,
 "summary":str,"hypotheses":[{"statement":str,"status":str,
 "evidence_ids":[str],"counterevidence":str}],"steps":[{"tool":str,
 "summary":str}],"proposed_actions":[{"title":str,"description":str}],
 "limitations":[str]}.
-Status examples: inconclusive, needs_review, no_finding. No confidence number implies safety.
-No remediation execution endpoint exists. UI labels actions as proposals, not applied fixes.
+Ejemplos de status: inconclusive, needs_review, no_finding. Ningún número de confianza
+implica seguridad. No existe ningún endpoint para ejecutar remediaciones. La interfaz
+marca las acciones como propuestas, no como correcciones aplicadas.
 
-Example payloads: fixtures.json. services/agent/tests/test_contract.py checks Python
-output against it; keep it in sync with the Swift models in AgentClient.swift.
+Cargas de ejemplo: fixtures.json. services/agent/tests/test_contract.py comprueba la
+salida de Python contra ese archivo; mantenlo sincronizado con los modelos de Swift en
+AgentClient.swift.
 
-## Python module interfaces
+## Interfaces de los módulos de Python
 
-telemetry.py: collect_snapshot() -> tuple[list[dict], list[dict]] (observations, coverage).
-Each observation has all fields above; UUID ids, UTC time. No persistent state in collector.
-Only local read-only inspection; fixed commands; no environment/command-line secrets.
+telemetry.py: collect_snapshot() -> tuple[list[dict], list[dict]] (observaciones, cobertura).
+Cada observación tiene todos los campos anteriores, IDs UUID y hora UTC. El recolector no
+guarda estado persistente. Solo inspección local de solo lectura con comandos fijos; sin
+secretos del entorno ni de la línea de comandos.
 
 investigator.py: investigate(observations: list[dict], question: str = "",
 coverage: list[dict] | None = None, on_step=None) -> dict (Investigation).
-on_step, when given, receives each tool step with the real observation IDs it read.
-Provider selection from GUARDIAN_MODEL_ENDPOINT / GUARDIAN_MODEL / GUARDIAN_MODEL_KEY.
-GUARDIAN_PROVIDER selects anthropic or openai. Default is anthropic with
-claude-haiku-5-5 and ANTHROPIC_API_KEY; an existing GUARDIAN_MODEL_ENDPOINT selects
-openai when provider is unset. Missing credentials/configuration means explicit
-unavailable/inconclusive (never pretend model inference).
-Anthropic uses the official Claude Agent SDK with custom read-only evidence MCP
-tools, no built-in tools or project settings, and bounded turns/time. OpenAI-compatible
-local providers retain the configured chat-completions endpoint and local tool loop.
-Cloud endpoint requires GUARDIAN_ALLOW_CLOUD=1; even then use minimized metadata.
-Tool loop operates on supplied recorded observations.
-Tests can inject/mock HTTP responses; no real model calls.
-
+Si se proporciona on_step, recibe cada paso de herramienta con los IDs reales de las
+observaciones que leyó.
+Selección del proveedor con GUARDIAN_MODEL_ENDPOINT / GUARDIAN_MODEL / GUARDIAN_MODEL_KEY.
+GUARDIAN_PROVIDER selecciona anthropic u openai. El predeterminado es anthropic con
+claude-haiku-5-5 y ANTHROPIC_API_KEY; si existe GUARDIAN_MODEL_ENDPOINT y no se definió
+el proveedor, se selecciona openai. La falta de credenciales o configuración produce un
+resultado explícito no disponible/no concluyente (nunca se finge una inferencia).
+Anthropic usa el Claude Agent SDK oficial con herramientas MCP propias de evidencia de
+solo lectura, sin herramientas integradas ni configuración del proyecto, y con turnos y
+tiempo acotados. Los proveedores locales compatibles con OpenAI mantienen el endpoint
+de chat completions configurado y el bucle local de herramientas.
+Un endpoint en la nube requiere GUARDIAN_ALLOW_CLOUD=1; incluso así, usa metadatos
+minimizados. El bucle de herramientas opera sobre las observaciones registradas
+recibidas. Las pruebas pueden inyectar o simular respuestas HTTP; sin llamadas reales a
+modelos.

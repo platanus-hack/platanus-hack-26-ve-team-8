@@ -1,1 +1,1 @@
-"""Guardian local defensive investigator."""
+"""Guardian: investigador defensivo local."""

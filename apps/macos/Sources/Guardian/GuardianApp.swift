@@ -1,5 +1,18 @@
 import SwiftUI
 
+// Los valores del protocolo siguen en inglés; solo se traducen al mostrarlos.
+private let spanishLabels = [
+    "inconclusive": "No concluyente", "needs_review": "Requiere revisión", "no_finding": "Sin hallazgos",
+    "partial": "Parcial", "available": "Disponible", "unavailable": "No disponible", "denied": "Denegado",
+    "unknown": "Desconocido", "unsupported": "No compatible", "error": "Error", "ok": "Correcto",
+    "processes": "Procesos", "tcp_listeners": "Escuchas TCP", "user_launch_agents": "LaunchAgents del usuario",
+    "service": "Servicio", "evidence_window": "Ventana de evidencia",
+    "process": "Proceso", "tcp_listener": "Escucha TCP", "launch_agent": "LaunchAgent",
+    "search_observations": "Buscar observaciones", "inspect_entity": "Inspeccionar entidad",
+    "get_evidence": "Obtener evidencia", "get_coverage": "Leer cobertura", "not_configured": "No configurado",
+]
+func es(_ value: String) -> String { spanishLabels[value] ?? value }
+
 @MainActor
 @Observable
 final class GuardianModel {
@@ -9,12 +22,12 @@ final class GuardianModel {
     var error: String?
     var busy = false
     var investigating = false
-    /// Latest agent-side investigation, including ones started by `serve --watch`.
+    /// Última investigación del agente, incluidas las iniciadas por `serve --watch`.
     var progress: InvestigationProgress?
-    /// Entities present when the Live view first saw evidence; anything else is a detection.
+    /// Entidades presentes cuando la vista En vivo vio evidencia por primera vez; cualquier otra es una detección.
     var baseline: Set<String>?
     var baselineDate: Date?
-    // Bumped when a local investigation result lands so an older in-flight refresh cannot drop it.
+    // Se incrementa al llegar un resultado local para que una actualización anterior en curso no lo descarte.
     private var investigationsVersion = 0
     var question = ""
     var apiKey = ""
@@ -51,13 +64,13 @@ final class GuardianModel {
         error = nil
         defer { busy = false }
         do {
-            guard cloudConsent else { throw ClientError(message: "Confirm cloud metadata and paid inference consent to connect.") }
+            guard cloudConsent else { throw ClientError(message: "Confirma el consentimiento para metadatos en la nube e inferencia de pago para conectar.") }
             let enteredKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             let key: String
             if let savedKey { key = savedKey }
             else if !enteredKey.isEmpty { key = enteredKey }
             else if let saved = try ProviderKeychain.read() { key = saved }
-            else { throw ClientError(message: "Enter your Anthropic API key.") }
+            else { throw ClientError(message: "Introduce tu clave de API de Anthropic.") }
             var current = try? await client.status()
             if current == nil {
                 try LocalRuntime.shared.start()
@@ -68,10 +81,10 @@ final class GuardianModel {
                     if current != nil { break }
                 }
             }
-            guard let current else { throw ClientError(message: "Agent did not become ready. Check the Python setup in the repository README, then retry Connect.") }
+            guard let current else { throw ClientError(message: "El agente no estuvo listo. Revisa la configuración de Python en el README del repositorio y vuelve a pulsar Conectar.") }
             status = current
             guard current.sdk_available != false else {
-                throw ClientError(message: "Claude Agent SDK is missing from the agent environment. Run bash scripts/setup-agent.sh from the Arkangel repository, then retry.")
+                throw ClientError(message: "Falta Claude Agent SDK en el entorno del agente. Ejecuta bash scripts/setup-agent.sh desde el repositorio de Arkangel y vuelve a intentarlo.")
             }
             let configuredStatus: AgentStatus
             if restoring && current.onboarding_required == false {
@@ -154,7 +167,7 @@ final class GuardianModel {
         if finished { await refresh() }
     }
 
-    // Separate from busy so status refresh continues during a model request.
+    // Separado de busy para que el estado se siga actualizando durante una solicitud al modelo.
     func investigate() async {
         guard !investigating else { return }
         investigating = true
@@ -192,25 +205,25 @@ struct GuardianMenu: View {
     @Bindable var model: GuardianModel
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Text(model.status == nil ? "Agent disconnected" : "Arkangel · Agent connected")
+        Text(model.status == nil ? "Agente desconectado" : "Arkangel · Agente conectado")
         if let status = model.status {
-            Text(status.monitoring ? "Monitoring enabled" : "Monitoring paused")
-            Text("\(status.observation_count) recorded observations")
+            Text(status.monitoring ? "Monitoreo activado" : "Monitoreo en pausa")
+            Text("\(status.observation_count) observaciones registradas")
         }
         Divider()
-        Button("Open Arkangel") { openWindow(id: "dashboard") }
-        Button("Provider setup…") {
+        Button("Abrir Arkangel") { openWindow(id: "dashboard") }
+        Button("Configurar proveedor…") {
             model.setupVisible = true
             openWindow(id: "dashboard")
         }
-        Button("Refresh status") { Task { await model.refresh() } }
+        Button("Actualizar estado") { Task { await model.refresh() } }
             .disabled(model.busy)
-        Button("Take local snapshot") { Task { await model.perform("scan") } }
+        Button("Tomar instantánea local") { Task { await model.perform("scan") } }
             .disabled(model.busy || model.status == nil)
-        Button(model.status?.monitoring == true ? "Pause monitoring" : "Enable monitoring") {
+        Button(model.status?.monitoring == true ? "Pausar monitoreo" : "Activar monitoreo") {
             Task { await model.perform("monitoring") }
         }.disabled(model.busy || model.status == nil)
         Divider()
-        Button(LocalRuntime.shared.ownsAgent ? "Quit app and its agent" : "Quit app (external agent keeps running)") { NSApplication.shared.terminate(nil) }
+        Button(LocalRuntime.shared.ownsAgent ? "Salir de la app y su agente" : "Salir de la app (el agente externo sigue activo)") { NSApplication.shared.terminate(nil) }
     }
 }

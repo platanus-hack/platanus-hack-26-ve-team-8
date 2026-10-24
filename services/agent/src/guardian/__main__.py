@@ -8,13 +8,13 @@ from .store import Store
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Guardian local defensive investigator")
+    parser = argparse.ArgumentParser(description="Guardian: investigador defensivo local")
     parser.add_argument("command", choices=["serve", "scan", "investigate", "status"])
     parser.add_argument("--data-dir", type=Path, default=Path.home() / "Library/Application Support/Guardian")
     parser.add_argument("--socket", type=Path, default=default_socket())
-    parser.add_argument("--watch", action="store_true", help="Collect every five seconds while the foreground service runs")
-    parser.add_argument("--auto-investigate", action="store_true", help="Investigate changed evidence at most once per minute using configured model")
-    parser.add_argument("--question", default="")
+    parser.add_argument("--watch", action="store_true", help="Recolecta cada cinco segundos mientras el servicio en primer plano está activo")
+    parser.add_argument("--auto-investigate", action="store_true", help="Investiga la evidencia modificada como máximo una vez por minuto con el modelo configurado")
+    parser.add_argument("--question", default="", help="Pregunta opcional para la investigación")
     args = parser.parse_args()
     service = GuardianService(Store(args.data_dir / "guardian.sqlite3"))
     if args.command == "serve":

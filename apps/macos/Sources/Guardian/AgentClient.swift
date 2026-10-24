@@ -126,13 +126,13 @@ struct AgentClient: Sendable {
         let socketPath = path
         return try await Task.detached(priority: .utility) {
             let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
-            guard descriptor >= 0 else { throw ClientError(message: "Could not open local socket.") }
+            guard descriptor >= 0 else { throw ClientError(message: "No se pudo abrir el socket local.") }
             defer { close(descriptor) }
             var noSignal: Int32 = 1
             setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout.size(ofValue: noSignal)))
-            // Nonblocking IO shares one deadline, including connection and response.
+            // La E/S no bloqueante comparte un único plazo, incluidas la conexión y la respuesta.
             _ = fcntl(descriptor, F_SETFL, O_NONBLOCK)
-            // A scan may wait for an in-flight monitoring scan; each runs two 10s collectors.
+            // Un escaneo puede esperar a uno de monitoreo en curso; cada uno ejecuta dos recolectores de 10 s.
             let seconds: TimeInterval = switch method {
             case "investigate": 120
             case "scan": 60
@@ -142,16 +142,16 @@ struct AgentClient: Sendable {
             let deadline = Date().addingTimeInterval(seconds)
             func ready(_ events: Int16) throws {
                 let remaining = deadline.timeIntervalSinceNow
-                guard remaining > 0 else { throw ClientError(message: "Agent request timed out.") }
+                guard remaining > 0 else { throw ClientError(message: "La solicitud al agente agotó el tiempo.") }
                 var descriptorState = pollfd(fd: descriptor, events: events, revents: 0)
                 let outcome = poll(&descriptorState, 1, Int32(min(remaining * 1000, 120_000)))
-                guard outcome > 0 else { throw ClientError(message: "Agent request timed out or was interrupted.") }
+                guard outcome > 0 else { throw ClientError(message: "La solicitud al agente agotó el tiempo o fue interrumpida.") }
             }
             var address = sockaddr_un()
             address.sun_family = sa_family_t(AF_UNIX)
             let bytes = Array(socketPath.utf8CString)
             guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) else {
-                throw ClientError(message: "Socket path is too long.")
+                throw ClientError(message: "La ruta del socket es demasiado larga.")
             }
             withUnsafeMutableBytes(of: &address.sun_path) { target in
                 target.copyBytes(from: bytes.map { UInt8(bitPattern: $0) })
@@ -162,12 +162,12 @@ struct AgentClient: Sendable {
                 }
             }
             if connected != 0 {
-                guard errno == EINPROGRESS else { throw ClientError(message: "Agent disconnected. Start the local agent separately.") }
+                guard errno == EINPROGRESS else { throw ClientError(message: "Agente desconectado. Inicia el agente local por separado.") }
                 try ready(Int16(POLLOUT))
                 var socketError: Int32 = 0
                 var length = socklen_t(MemoryLayout<Int32>.size)
                 guard getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &socketError, &length) == 0, socketError == 0 else {
-                    throw ClientError(message: "Could not connect to the local agent.")
+                    throw ClientError(message: "No se pudo conectar con el agente local.")
                 }
             }
             let requestID = UUID().uuidString
@@ -179,7 +179,7 @@ struct AgentClient: Sendable {
                     try ready(Int16(POLLOUT))
                     let count = send(descriptor, buffer.baseAddress!.advanced(by: offset), buffer.count - offset, 0)
                     if count < 0 && (errno == EAGAIN || errno == EINTR) { continue }
-                    guard count > 0 else { throw ClientError(message: "Could not send request to agent.") }
+                    guard count > 0 else { throw ClientError(message: "No se pudo enviar la solicitud al agente.") }
                     offset += count
                 }
             }
@@ -189,14 +189,14 @@ struct AgentClient: Sendable {
                 try ready(Int16(POLLIN))
                 let count = recv(descriptor, &chunk, chunk.count, 0)
                 if count < 0 && (errno == EAGAIN || errno == EINTR) { continue }
-                guard count > 0 else { throw ClientError(message: "Agent closed the connection before replying.") }
+                guard count > 0 else { throw ClientError(message: "El agente cerró la conexión antes de responder.") }
                 response.append(contentsOf: chunk.prefix(count))
-                guard response.count <= 8 * 1024 * 1024 else { throw ClientError(message: "Agent response exceeds the 8 MB limit.") }
+                guard response.count <= 8 * 1024 * 1024 else { throw ClientError(message: "La respuesta del agente supera el límite de 8 MB.") }
                 if let newline = response.firstIndex(of: 10) {
                     let envelope = try JSONDecoder().decode(Envelope<T>.self, from: response[..<newline])
-                    guard envelope.id == requestID else { throw ClientError(message: "Agent response ID did not match.") }
+                    guard envelope.id == requestID else { throw ClientError(message: "El ID de la respuesta del agente no coincide.") }
                     if let error = envelope.error { throw ClientError(message: error.message) }
-                    guard let result = envelope.result else { throw ClientError(message: "Agent returned no result.") }
+                    guard let result = envelope.result else { throw ClientError(message: "El agente no devolvió ningún resultado.") }
                     return result
                 }
             }
