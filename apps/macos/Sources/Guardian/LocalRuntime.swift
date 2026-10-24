@@ -1,5 +1,6 @@
 import AppKit
 import Security
+import UserNotifications
 
 struct ProviderKeychain {
     private static var query: [String: Any] {
@@ -86,8 +87,46 @@ final class LocalRuntime {
 }
 
 @MainActor
-final class GuardianAppDelegate: NSObject, NSApplicationDelegate {
+final class GuardianAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, NSWindowDelegate {
+    let model = GuardianModel()
+    private weak var dashboardWindow: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }
+        dashboardWindow = NSApplication.shared.windows.first { $0.canBecomeMain }
+        dashboardWindow?.delegate = self
+        model.startPolling()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if dashboardWindow == nil {
+            dashboardWindow = NSApplication.shared.windows.first { $0.canBecomeMain }
+            dashboardWindow?.delegate = self
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        Task { @MainActor in
+            self.model.showAlerts = true
+            self.dashboardWindow?.makeKeyAndOrderFront(nil)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+        completionHandler()
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        model.stopPolling()
         LocalRuntime.shared.stopOwnedAgent()
     }
 }

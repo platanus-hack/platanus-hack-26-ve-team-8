@@ -19,13 +19,22 @@ def default_socket() -> Path:
 
 
 class GuardianService:
-    def __init__(self, store: Store, collector=None, investigator=None):
+    def __init__(self, store: Store, collector=None, investigator=None, file_collector=None, clock=time.time):
+        default_collector = collector is None
         if collector is None:
             from .telemetry import collect_snapshot
             collector = collect_snapshot
         if investigator is None:
             from .investigator import investigate
             investigator = investigate
+        if file_collector is None:
+            from .surveillance import collect_files
+            file_collector = collect_files if default_collector else lambda known: ([], [])
+        self.file_collector = file_collector
+        self.clock = clock
+        self.file_scan_at = None
+        self.file_coverage = []
+        self.last_file_scan = None
         self.store = store
         self.collector = collector
         self.investigator = investigator
@@ -36,7 +45,6 @@ class GuardianService:
         self.monitoring = False
         self.coverage = []
         self.last_scan = None
-        self.dirty = False
         self.progress = {"active": False, "started_at": None, "steps": []}
         self.stop = threading.Event()
         self.exposed = []
@@ -54,7 +62,8 @@ class GuardianService:
                 provider_status = f"{provider.name} / {provider.model}"
                 if provider.name == "anthropic" and os.getenv("GUARDIAN_ALLOW_CLOUD") != "1":
                     provider_status += " (nube desactivada)"
-            return {"monitoring": self.monitoring,
+            return {"monitoring": self.monitoring, "automation": self.automation_status(),
+                    "alerts": self.store.alert_counts(), "last_file_scan": self.last_file_scan,
                     "provider": provider_status,
                     "onboarding_required": not provider.configured or (provider.name == "anthropic" and os.getenv("GUARDIAN_ALLOW_CLOUD") != "1"),
                     "sdk_available": sdk_available(),
@@ -63,11 +72,20 @@ class GuardianService:
                     "exposed": [dict(item, blocked=item["port"] in self.blocked) for item in self.exposed],
                     "blocked_ports": sorted(self.blocked)}
 
-    def scan(self):
+    def scan(self, force_files=False):
         with self.scan_lock:
             observations, coverage = self.collector()
+            observations, coverage = list(observations), list(coverage)
+            now = time.monotonic()
+            if force_files or self.file_scan_at is None or now - self.file_scan_at >= 30:
+                files, self.file_coverage = self.file_collector(self.store.watch_records())
+                observations.extend(files)
+                self.file_scan_at = time.monotonic()
+                self.last_file_scan = datetime.now(timezone.utc).isoformat()
+            coverage.extend(self.file_coverage)
             with self.lock:
-                self.dirty = bool(self.store.ingest(observations)) or self.dirty
+                self.store.detect(observations, coverage)
+                self.store.ingest(observations)
                 self.coverage = coverage
                 listeners = {(o["attributes"]["port"], o["attributes"].get("executable", "unknown"), o["attributes"]["bind_scope"])
                              for o in observations if o.get("kind") == "tcp_listener"
@@ -76,31 +94,38 @@ class GuardianService:
                                 for port, executable, scope in sorted(listeners)]
                 self.firewall = next((o["attributes"] for o in observations if o.get("kind") == "firewall"), None)
                 self.last_scan = datetime.now(timezone.utc).isoformat()
-                self.store.prune()
+                self.store.prune(self.clock())
         return self.status()
 
-    def investigate(self, question=""):
+    def investigate(self, question="", automatic=False):
         if not self.investigation_lock.acquire(blocking=False):
             raise ValueError("Ya hay una investigación en curso")
         try:
             with self.lock:
-                observations = self.store.observations(500)
+                if automatic and self.automation_status()["reason"] != "ready":
+                    return None
+                alerts = self.store.alerts(pending=True)
+                if automatic and not self.store.reserve_attempt(self.clock()):
+                    return None
+                prioritized = []
+                for alert in alerts:
+                    prioritized.extend(item for item in (alert["signal"], alert["before"], alert["after"]) if item)
+                records = {item["id"]: item for item in prioritized}
+                for item in self.store.observations(500):
+                    records.setdefault(item["id"], item)
+                observations = list(records.values())[:500]
                 coverage = list(self.coverage)
                 total = self.store.count()
-                if total > len(observations):
+                if total > 500 or len(records) > 500 or self.store.alert_counts()["pending"] > len(alerts):
                     coverage.append({"source": "evidence_window", "status": "partial",
-                                     "detail": f"La investigación ve las {len(observations)} observaciones más recientes de {total} retenidas."})
-                self.dirty = False
+                                     "detail": "La ventana prioriza hasta 100 señales con sus estados anterior y posterior; el contexto adicional está limitado a 500 observaciones."})
                 self.progress = {"active": True, "started_at": datetime.now(timezone.utc).isoformat(), "steps": []}
-            try:
-                result = self.investigator(observations, question=question, coverage=coverage,
-                                           on_step=self.record_step)
-            except Exception:
-                with self.lock:
-                    self.dirty = True
-                raise
+            result = self.investigator(observations, question=question, coverage=coverage,
+                                       on_step=self.record_step)
             with self.lock:
                 self.store.save_investigation(result)
+                if result.get("status") != "inconclusive" or result.get("hypotheses"):
+                    self.store.complete_alerts([alert["id"] for alert in alerts])
             return result
         finally:
             with self.lock:
@@ -117,6 +142,27 @@ class GuardianService:
         params = request.get("params", {})
         if not isinstance(params, dict):
             raise ValueError("params debe ser un objeto")
+        if method == "alerts":
+            limit = params.get("limit", 100)
+            if type(limit) is not int or not 1 <= limit <= 500:
+                raise ValueError("limit debe estar entre 1 y 500")
+            return {"items": self.store.alerts(limit=limit)}
+        if method == "alerts.acknowledge":
+            identifier = params.get("id")
+            if not isinstance(identifier, str) or not 1 <= len(identifier) <= 100:
+                raise ValueError("id debe identificar una señal")
+            with self.lock:
+                self.store.acknowledge(identifier)
+            return self.status()
+        if method == "automation.set":
+            enabled = params.get("enabled")
+            if type(enabled) is not bool:
+                raise ValueError("enabled debe ser un booleano")
+            if enabled and params.get("consent") is not True:
+                raise ValueError("Confirma el consentimiento para investigaciones automáticas y sus cargos de API.")
+            with self.lock:
+                self.store.set_automation(enabled)
+            return self.status()
         if method == "status":
             return self.status()
         if method == "provider.configure":
@@ -129,7 +175,7 @@ class GuardianService:
         if method == "investigations":
             return {"items": self.store.investigations()}
         if method == "scan":
-            return self.scan()
+            return self.scan(force_files=True)
         if method == "investigate":
             question = params.get("question", "")
             if not isinstance(question, str) or len(question) > 4000:
@@ -191,18 +237,43 @@ class GuardianService:
         finally:
             self.investigation_lock.release()
 
+    def automation_status(self):
+        quota = self.store.quota(self.clock())
+        provider = provider_config()
+        enabled = self.store.automation_enabled()
+        reason = "ready"
+        if not enabled:
+            reason = "disabled"
+        elif not self.monitoring:
+            reason = "paused"
+        elif not provider.configured:
+            reason = "provider_unavailable"
+        elif provider.name == "anthropic" and os.getenv("GUARDIAN_ALLOW_CLOUD") != "1":
+            reason = "cloud_disabled"
+        elif self.progress["active"]:
+            reason = "investigating"
+        elif not self.store.alert_counts()["pending"]:
+            reason = "no_signals"
+        elif quota["remaining"] == 0:
+            reason = "quota_exhausted"
+        elif quota["cooldown_seconds"]:
+            reason = "cooldown"
+        return {"enabled": enabled, "reason": reason, **quota}
+
     def watch(self, auto_investigate: bool):
-        last_investigation = 0.0
+        # El argumento de CLI es consentimiento explícito; --watch por sí solo no lo es.
+        if auto_investigate:
+            self.store.set_automation(True)
         while not self.stop.wait(5):
             if not self.monitoring:
+                with self.lock:
+                    self.store.prune(self.clock())
                 continue
             try:
                 self.scan()
-                elapsed = time.monotonic() - last_investigation
-                if (auto_investigate and (self.dirty or elapsed >= 900)
-                        and provider_config().configured
-                        and elapsed >= 60 and not self.investigation_lock.locked()):
-                    last_investigation = time.monotonic()
+                with self.lock:
+                    ready = self.automation_status()["reason"] == "ready"
+                if ready and not self.investigation_lock.locked():
                     threading.Thread(target=self.auto_investigate, daemon=True).start()
             except Exception as error:
                 with self.lock:
@@ -211,11 +282,10 @@ class GuardianService:
 
     def auto_investigate(self):
         try:
-            self.investigate("Revisa los cambios recientes. Formula y pon a prueba hipótesis; considera explicaciones benignas.")
+            self.investigate("Revisa las señales recientes y considera explicaciones benignas.", automatic=True)
         except Exception:
-            # Una investigación fallida no debe detener la recolección ni borrar la cobertura de telemetría.
-            with self.lock:
-                self.dirty = True
+            # Las señales quedan pendientes; el intento ya consumió cuota antes de llamar al modelo.
+            pass
 
 
 class Handler(socketserver.StreamRequestHandler):

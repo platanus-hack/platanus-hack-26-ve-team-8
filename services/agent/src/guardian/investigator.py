@@ -118,7 +118,7 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
             entity = str(item.get("entity", ""))
             entities.setdefault(entity, f"entity_{len(entities) + 1}")
             kind = item.get("kind")
-            safe_kind = kind if kind in {"process", "connection", "persistence", "file", "network", "tcp_listener", "launch_agent", "firewall"} else "other"
+            safe_kind = kind if kind in {"process", "connection", "persistence", "file", "network", "tcp_listener", "launch_agent", "firewall", "detection"} else "other"
             safe_attributes = {}
             attributes = item.get("attributes", {})
             for field in ("pid", "parent_pid", "uid", "port"):
@@ -131,6 +131,23 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
                 value = attributes.get(field)
                 if type(value) is bool:
                     safe_attributes[field] = value
+            for field, values in {
+                "category": {"launch_agent", "launch_daemon", "shell_startup"},
+                "change": {"created", "modified", "deleted"},
+                "rule": {"file_changed", "firewall_weakened", "listener_exposed"},
+                "file_type": {"regular", "symlink", "other"},
+            }.items():
+                value = attributes.get(field)
+                if isinstance(value, str) and value in values:
+                    safe_attributes[field] = value
+            for field in ("mode", "previous_mode", "owner", "previous_owner"):
+                value = attributes.get(field)
+                maximum = 0o7777 if "mode" in field else 2**32
+                if type(value) is int and 0 <= value <= maximum:
+                    safe_attributes[field] = value
+            for field in ("present", "readable"):
+                if type(attributes.get(field)) is bool:
+                    safe_attributes[field] = attributes[field]
             timestamp = ""
             try:
                 timestamp = datetime.fromisoformat(str(item.get("timestamp", ""))).isoformat()

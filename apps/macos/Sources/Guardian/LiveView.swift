@@ -1,7 +1,7 @@
 import SceneKit
 import SwiftUI
 
-/// Vista pensada para la demo: detecciones desde la línea base, los pasos de Claude en vivo y el veredicto.
+/// Señales persistentes y pasos de investigación; una señal no confirma un compromiso.
 struct LiveView: View {
     @Bindable var model: GuardianModel
     let openReport: () -> Void
@@ -25,17 +25,7 @@ struct LiveView: View {
             .fixedSize(horizontal: false, vertical: true)
             if !investigating, let latest = model.investigations.first { verdictCard(latest) }
         }
-        .task {
-            var tick = 0
-            while !Task.isCancelled {
-                if model.baseline == nil && !model.observations.isEmpty { model.setBaseline() }
-                await model.pollProgress()
-                // Más rápido que la actualización de 15 s del panel para que las detecciones aparezcan en pocos segundos.
-                if tick % 3 == 0 { await model.refresh() }
-                tick += 1
-                do { try await Task.sleep(for: .seconds(1)) } catch { return }
-            }
-        }
+
     }
 
     // MARK: HUD
@@ -55,7 +45,7 @@ struct LiveView: View {
                     Button("Activar monitoreo") { Task { await model.perform("monitoring") } }
                         .buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
                 }
-                Button("Restablecer línea base") { model.setBaseline() }
+                Button("Actualizar referencia de procesos") { model.setBaseline() }
                     .buttonStyle(ArkButton(prominent: false))
                     .disabled(model.observations.isEmpty)
                 Button("Investigar") { Task { await model.investigate() } }
@@ -75,11 +65,11 @@ struct LiveView: View {
             return ("Agente desconectado", "Conéctate desde Resumen para empezar a defender este Mac.", .secondary)
         }
         if !threats.isEmpty {
-            return (threats.count == 1 ? "1 amenaza nueva detectada" : "\(threats.count) amenazas nuevas detectadas",
-                    "Nueva persistencia o escuchas desde la línea base.", .danger)
+            return (threats.count == 1 ? "1 señal pendiente de revisión" : "\(threats.count) señales pendientes de revisión",
+                    "Cambios de archivos, firewall o escuchas para revisar.", .danger)
         }
         return (status.monitoring ? "Vigilando este Mac" : "Monitoreo en pausa",
-                "Sin nueva persistencia ni escuchas desde la línea base.", status.monitoring ? .success : .warning)
+                "Sin señales pendientes de revisión; esto no garantiza seguridad.", status.monitoring ? .success : .warning)
     }
 
     // MARK: Cards
@@ -96,7 +86,7 @@ struct LiveView: View {
                 }
             }
             if threats.isEmpty {
-                Text("Sin nueva persistencia ni escuchas desde la línea base.").font(.callout).foregroundStyle(.secondary)
+                Text("Sin señales pendientes de revisión; esto no garantiza seguridad.").font(.callout).foregroundStyle(.secondary)
             }
             ForEach(threats.prefix(6)) { item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {

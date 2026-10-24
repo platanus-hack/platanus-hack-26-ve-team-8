@@ -1,10 +1,11 @@
 import SwiftUI
 
 enum Page: String, CaseIterable, Identifiable {
-    case live = "En vivo", overview = "Resumen", observations = "Observaciones", investigations = "Investigaciones"
+    case alerts = "Señales", live = "En vivo", overview = "Resumen", observations = "Observaciones", investigations = "Investigaciones"
     var id: String { rawValue }
     var symbol: String {
         switch self {
+        case .alerts: "exclamationmark.shield"
         case .live: "dot.radiowaves.left.and.right"
         case .overview: "square.grid.2x2"
         case .observations: "waveform.path.ecg"
@@ -13,7 +14,8 @@ enum Page: String, CaseIterable, Identifiable {
     }
     var subtitle: String {
         switch self {
-        case .live: "Mira a Claude defender este Mac en tiempo real."
+        case .alerts: "Cambios para revisar; no son una confirmación de compromiso."
+        case .live: "Mira a Claude investigar la evidencia de este Mac."
         case .overview: "Primero la evidencia. Nada cambia sin tu aprobación."
         case .observations: "Evidencia local registrada, tratada como no confiable."
         case .investigations: "Hipótesis, contraevidencia y propuestas."
@@ -26,7 +28,6 @@ struct Dashboard: View {
     @State private var selection: Page? = .live
     @State private var filter = ""
     @State private var kindFilter: String?
-    @Environment(\.scenePhase) private var scenePhase
     private var page: Page { selection ?? .overview }
     private let suggestions = ["Explica las escuchas de red abiertas", "Revisa mis LaunchAgents"]
 
@@ -43,6 +44,7 @@ struct Dashboard: View {
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     switch page {
+                    case .alerts: alertList
                     case .live: LiveView(model: model) { selection = .investigations }
                     case .overview: overview
                     case .observations: observationList
@@ -69,15 +71,8 @@ struct Dashboard: View {
             }
         }
         .tint(.primary)
-        .task(id: scenePhase) {
-            guard scenePhase == .active else { return }
-            await model.restoreOnStartup()
-            await model.refresh()
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(15)) } catch { return }
-                guard !Task.isCancelled else { return }
-                await model.refresh()
-            }
+        .onChange(of: model.showAlerts, initial: true) { _, requested in
+            if requested { selection = .alerts; model.showAlerts = false }
         }
     }
 
@@ -87,7 +82,7 @@ struct Dashboard: View {
         List(selection: $selection) {
             ForEach(Page.allCases) { page in
                 Label(page.rawValue, systemImage: page.symbol)
-                    .badge(page == .observations ? model.observations.count : page == .investigations ? model.investigations.count : 0)
+                    .badge(page == .alerts ? (model.status?.alerts?.unacknowledged ?? 0) : page == .observations ? model.observations.count : page == .investigations ? model.investigations.count : 0)
                     .tag(page)
             }
         }
@@ -174,13 +169,15 @@ struct Dashboard: View {
             }
             Text("Añade tu clave de API de Anthropic para activar las investigaciones. El agente valida el modelo antes de conectar.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button("Vigilar localmente sin conectar Claude") { Task { await model.startLocalMonitoring() } }
+                .disabled(model.busy)
             SecureField("Clave de API de Anthropic", text: $model.apiKey, prompt: Text("Clave de API de Anthropic (déjala vacía para usar la guardada)"))
                 .textFieldStyle(.plain).font(.system(.body, design: .monospaced))
                 .inputField()
                 .disabled(model.busy)
             VStack(alignment: .leading, spacing: 8) {
                 assurance("lock", "Tu clave se guarda en el Llavero de macOS tras validarse. Una clave guardada nunca se muestra.")
-                assurance("hand.raised", "El monitoreo recolecta evidencia local. Las investigaciones con el modelo solo se ejecutan cuando las pides.")
+                assurance("hand.raised", "La vigilancia local funciona sin clave. Claude investiga cuando lo pides o cuando autorizas por separado las investigaciones automáticas.")
                 assurance("power", "Conectar puede iniciar el agente de Python de Arkangel en primer plano. Al salir se detiene el agente iniciado por esta app; un agente externo sigue activo.")
             }
             Toggle("Permito enviar a Anthropic metadatos minimizados de la telemetría local y entiendo que las investigaciones generan cargos de API.", isOn: $model.cloudConsent)
@@ -384,6 +381,58 @@ struct Dashboard: View {
             }
         }
         .card()
+    }
+
+    private var alertList: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let status = model.status {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(status.monitoring ? "Vigilancia activa" : "Vigilancia en pausa").font(.headline)
+                    if let last = status.last_file_scan { Text("Última revisión de archivos: \(fullTime(last))") }
+                    Text("\(status.alerts?.pending ?? 0) señales pendientes de investigación · \(status.alerts?.unacknowledged ?? 0) sin revisar")
+                    Button(status.monitoring ? "Pausar vigilancia" : "Activar vigilancia") { Task { await model.perform("monitoring") } }
+                        .disabled(model.busy)
+                    if let automation = status.automation {
+                        Toggle("Autorizo investigaciones automáticas con metadatos minimizados y sus cargos de API.", isOn: Binding(
+                            get: { model.status?.automation?.enabled ?? false },
+                            set: { enabled in Task { await model.setAutomation(enabled) } }
+                        ))
+                        .toggleStyle(.checkbox)
+                        Text("\(es(automation.reason)) · \(automation.remaining) intentos disponibles en 24 horas")
+                        if automation.cooldown_seconds > 0 { Text("Espera restante: \(automation.cooldown_seconds) segundos") }
+                        Text("Máximo una investigación cada cinco minutos y doce intentos en 24 horas. Los fallos consumen intentos. Sin presupuesto monetario fijo.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let detail = model.notificationDetail { Text(detail).foregroundStyle(.secondary) }
+                    Text("Cerrar la ventana mantiene la vigilancia. Salir detiene el agente propio. Una investigación ya iniciada puede terminar al pausar.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(status.coverage.filter { $0.status != "available" && $0.status != "ok" }) { coverage in
+                        Text("\(es(coverage.source)): \(coverage.detail)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }.card()
+            }
+            if model.alerts.isEmpty {
+                Text("No hay señales registradas. La ausencia de señales no garantiza seguridad.")
+            }
+            Text("Se muestran hasta 500 señales de los últimos siete días.").font(.caption).foregroundStyle(.secondary)
+            ForEach(model.alerts) { alert in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(alert.reason).font(.headline)
+                    Text(fullTime(alert.created_at)).font(.caption).foregroundStyle(.secondary)
+                    Text(alert.signal.entity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    Text(alert.investigated ? "Investigación completada" : "Pendiente de investigación")
+                    DisclosureGroup("Evidencia anterior y posterior") {
+                        if let before = alert.before { observationRow(before) }
+                        else { Text("Sin evidencia anterior disponible.") }
+                        observationRow(alert.after)
+                        observationRow(alert.signal)
+                    }
+                    if !alert.acknowledged {
+                        Button("Marcar como revisada") { Task { await model.acknowledge(alert.id) } }
+                    } else { Text("Revisada; la evidencia y la referencia se conservan.").font(.caption) }
+                }.card()
+            }
+        }
     }
 
     // MARK: Observations

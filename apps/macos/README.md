@@ -1,7 +1,8 @@
 # Guardian para macOS
 
 Panel nativo de SwiftUI y cliente para la barra de menús. Requiere macOS 15+, Swift 6,
-Python 3.11+ y una clave de API de Anthropic con acceso a Claude Haiku 5.5.
+Python 3.11+. Para investigar con Claude se requiere una clave de API de Anthropic
+con acceso a Claude Haiku 5.5; la vigilancia local funciona sin clave.
 
 Desde la raíz del repositorio, prepara el agente una vez:
 
@@ -51,14 +52,15 @@ Si no hay ningún agente accesible, Conectar inicia `.venv/bin/python -m guardia
 serve --watch` del repositorio como proceso hijo en primer plano, con el directorio del
 código fuente en `PYTHONPATH`. Envía la clave por el socket Unix cuando el agente está
 listo. La app nunca instala dependencias. Si falta la configuración, muestra un error
-con instrucciones. El monitoreo recolecta evidencia local; las investigaciones solo se
-ejecutan cuando se piden explícitamente, sin investigaciones automáticas del modelo al
-arrancar.
+con instrucciones. También puedes elegir **Vigilar localmente sin conectar Claude**.
+La automatización requiere la autorización separada de **Señales**; conectar el
+proveedor no la activa. La autorización se conserva al reiniciar.
 
 Al abrir la app, si hay un consentimiento previo y una clave guardada en el Llavero, se
 hace un único intento automático de reconexión, iniciando un agente propio en primer
 plano si hace falta. Si falla, vuelve a la configuración inicial. Mientras se edita la
-configuración se pausan la actualización y la restauración automática.
+configuración se evita la restauración de credenciales, pero se sigue consultando
+el estado y enviando avisos.
 
 Un agente reiniciado se vuelve a configurar desde el Llavero solo cuando informa que
 requiere configuración inicial y existe un consentimiento previo. Las actualizaciones
@@ -76,9 +78,12 @@ ejecutable se movió o su repositorio original ya no existe.
 El protocolo v1 usa una solicitud NDJSON por conexión, IDs de respuesta coincidentes,
 E/S fuera del hilo principal y un límite de respuesta de 8 MB. Los plazos son de 10
 segundos normalmente, 30 segundos para configurar el proveedor y 120 segundos para las
-investigaciones. Las escenas activas del panel se actualizan cada 15 segundos. Cerrar o
-desactivar el panel detiene la actualización automática; la actualización explícita
-desde el menú sigue disponible.
+investigaciones. La aplicación consulta estado y señales cada cinco segundos,
+incluso con la ventana cerrada. El menú muestra el número de señales sin revisar.
+Al activar la vigilancia se solicita permiso para notificaciones genéricas; pulsarlas
+abre **Señales**. Si el permiso se deniega, las señales siguen disponibles en la app.
+El ejecutable suelto de `swift run`, sin identificador de bundle, usa el indicador
+de la barra de menús; los avisos de macOS requieren el bundle de la aplicación.
 
 La línea de tiempo pide hasta 500 observaciones y muestra los atributos en texto plano,
 incluido el JSON anidado, en Metadatos registrados. Los hallazgos muestran hipótesis,
@@ -104,3 +109,18 @@ interfaz, la validación con una clave real, la interacción con el Llavero y la
 inferencia de pago del modelo requieren una comprobación interactiva de extremo a
 extremo y no se ejecutaron durante la verificación del código fuente. Ninguna
 remediación se ejecuta sin tu aprobación en el aviso de administrador de macOS.
+
+## Revisión manual de vigilancia
+
+En una cuenta de prueba, activa la vigilancia sin Claude y espera a que aparezca la
+última revisión de archivos. Modifica únicamente un archivo de prueba dentro de las
+rutas seleccionadas, espera la siguiente revisión y comprueba el estado anterior y
+posterior en **Señales**. No ejecutes ni cargues ese archivo como LaunchAgent.
+Repite con eliminación, enlace simbólico y archivo mayor de 1 MiB; revisa la cobertura.
+
+Comprueba que cerrar la ventana mantiene las revisiones y que una notificación vuelve
+a abrir **Señales**. Repite denegando notificaciones y revisa el contador de la barra.
+Salir debe detener el agente propio y conservar un agente iniciado externamente.
+Las pruebas de Claude usan proveedores simulados; una comprobación real genera cargos
+solo después de autorizarla. La automatización admite doce intentos en 24 horas y
+separa intentos por cinco minutos; reiniciar no restablece esos límites.

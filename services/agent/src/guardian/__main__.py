@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--data-dir", type=Path, default=Path.home() / "Library/Application Support/Guardian")
     parser.add_argument("--socket", type=Path, default=default_socket())
     parser.add_argument("--watch", action="store_true", help="Recolecta cada cinco segundos mientras el servicio en primer plano está activo")
-    parser.add_argument("--auto-investigate", action="store_true", help="Investiga la evidencia modificada como máximo una vez por minuto con el modelo configurado")
+    parser.add_argument("--auto-investigate", action="store_true", help="Autoriza investigaciones automáticas de pago: una cada cinco minutos y doce intentos en 24 horas")
     parser.add_argument("--question", default="", help="Pregunta opcional para la investigación")
     args = parser.parse_args()
     service = GuardianService(Store(args.data_dir / "guardian.sqlite3"))
@@ -27,7 +27,7 @@ def main():
         except KeyboardInterrupt:
             pass
     elif args.command == "scan":
-        print(json.dumps(service.scan(), indent=2))
+        print(json.dumps(service.scan(force_files=True), indent=2))
     elif args.command == "investigate":
         print(json.dumps(service.investigate(args.question), indent=2))
     else:

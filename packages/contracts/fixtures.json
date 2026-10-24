@@ -1,24 +1,151 @@
 {
-  "status": {"monitoring": true, "provider": "anthropic / claude-haiku-5-5",
-             "onboarding_required": false, "sdk_available": true,
-             "coverage": [{"source": "processes", "status": "partial", "detail": "Snapshot only"}],
-             "observation_count": 1, "last_scan": "2026-10-24T12:00:00+00:00",
-             "firewall": {"firewall_enabled": false, "stealth_mode": false},
-             "exposed": [{"port": 3000, "executable": "node", "bind_scope": "any", "blocked": true}],
-             "blocked_ports": [3000]},
-  "observation": {"id": "1c7f0b5e-0000-4000-8000-000000000001", "timestamp": "2026-10-24T12:00:00+00:00",
-                  "kind": "process", "source": "processes", "entity": "123",
-                  "summary": "Process example", "attributes": {"pid": 123}},
-  "investigation": {"id": "1c7f0b5e-0000-4000-8000-000000000002", "created_at": "2026-10-24T12:00:00+00:00",
-                    "status": "inconclusive", "title": "Investigation inconclusive", "summary": "Fixture",
-                    "hypotheses": [{"statement": "Example", "status": "unconfirmed",
-                                    "evidence_ids": ["1c7f0b5e-0000-4000-8000-000000000001"], "counterevidence": ""}],
-                    "steps": [{"tool": "get_coverage", "summary": "Read coverage"}],
-                    "proposed_actions": [{"title": "Review", "description": "Proposal only"},
-                                         {"title": "Block port 3000", "description": "Reachable from other devices",
-                                          "action": {"type": "block_port", "port": 3000}}],
-                    "limitations": ["Snapshot only"]},
-  "progress": {"active": true, "started_at": "2026-10-24T12:00:00+00:00",
-               "steps": [{"tool": "get_evidence", "summary": "Fetched 1 evidence records.",
-                          "evidence_ids": ["1c7f0b5e-0000-4000-8000-000000000001"]}]}
+  "status": {
+    "monitoring": true,
+    "provider": "anthropic / claude-haiku-5-5",
+    "onboarding_required": false,
+    "sdk_available": true,
+    "coverage": [
+      {
+        "source": "processes",
+        "status": "partial",
+        "detail": "Visibilidad parcial de la instantánea."
+      }
+    ],
+    "observation_count": 1,
+    "last_scan": "2026-10-24T12:00:00+00:00",
+    "firewall": {
+      "firewall_enabled": false,
+      "stealth_mode": false
+    },
+    "exposed": [
+      {
+        "port": 3000,
+        "executable": "node",
+        "bind_scope": "any",
+        "blocked": true
+      }
+    ],
+    "blocked_ports": [
+      3000
+    ],
+    "automation": {
+      "enabled": false,
+      "reason": "disabled",
+      "remaining": 12,
+      "cooldown_seconds": 0
+    },
+    "alerts": {
+      "unacknowledged": 1,
+      "pending": 1
+    },
+    "last_file_scan": "2026-10-24T12:00:00+00:00"
+  },
+  "observation": {
+    "id": "1c7f0b5e-0000-4000-8000-000000000001",
+    "timestamp": "2026-10-24T12:00:00+00:00",
+    "kind": "process",
+    "source": "processes",
+    "entity": "123",
+    "summary": "Proceso de ejemplo",
+    "attributes": {
+      "pid": 123
+    }
+  },
+  "investigation": {
+    "id": "1c7f0b5e-0000-4000-8000-000000000002",
+    "created_at": "2026-10-24T12:00:00+00:00",
+    "status": "inconclusive",
+    "title": "Investigación no concluyente",
+    "summary": "Ejemplo",
+    "hypotheses": [
+      {
+        "statement": "Hipótesis de ejemplo",
+        "status": "Sin confirmar",
+        "evidence_ids": [
+          "1c7f0b5e-0000-4000-8000-000000000001"
+        ],
+        "counterevidence": ""
+      }
+    ],
+    "steps": [
+      {
+        "tool": "get_coverage",
+        "summary": "Cobertura consultada"
+      }
+    ],
+    "proposed_actions": [
+      {
+        "title": "Revisar",
+        "description": "Solo propuesta"
+      },
+      {
+        "title": "Bloquear puerto 3000",
+        "description": "Accesible desde otros dispositivos",
+        "action": {
+          "type": "block_port",
+          "port": 3000
+        }
+      }
+    ],
+    "limitations": [
+      "Visibilidad parcial de la instantánea."
+    ]
+  },
+  "progress": {
+    "active": true,
+    "started_at": "2026-10-24T12:00:00+00:00",
+    "steps": [
+      {
+        "tool": "get_evidence",
+        "summary": "Se consultó un registro de evidencia.",
+        "evidence_ids": [
+          "1c7f0b5e-0000-4000-8000-000000000001"
+        ]
+      }
+    ]
+  },
+  "alert": {
+    "id": "senal-1",
+    "created_at": "2026-10-24T12:00:00+00:00",
+    "reason": "Cambió un archivo de persistencia o configuración.",
+    "signal": {
+      "id": "senal-1",
+      "timestamp": "2026-10-24T12:00:00+00:00",
+      "kind": "detection",
+      "source": "shell_files",
+      "entity": "/Users/ejemplo/.zshrc",
+      "summary": "Cambió un archivo de persistencia o configuración.",
+      "attributes": {
+        "rule": "file_changed",
+        "change": "deleted",
+        "category": "shell_startup"
+      }
+    },
+    "before": {
+      "id": "archivo-1",
+      "timestamp": "2026-10-24T12:00:00+00:00",
+      "kind": "file",
+      "source": "shell_files",
+      "entity": "/Users/ejemplo/.zshrc",
+      "summary": "Metadatos de archivo seleccionado.",
+      "attributes": {
+        "present": true,
+        "category": "shell_startup"
+      }
+    },
+    "after": {
+      "id": "archivo-2",
+      "timestamp": "2026-10-24T12:00:00+00:00",
+      "kind": "file",
+      "source": "shell_files",
+      "entity": "/Users/ejemplo/.zshrc",
+      "summary": "Archivo seleccionado ausente.",
+      "attributes": {
+        "present": false,
+        "category": "shell_startup"
+      }
+    },
+    "acknowledged": false,
+    "investigated": false
+  }
 }

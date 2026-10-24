@@ -8,43 +8,43 @@ export const Route = createFileRoute('/')({ component: Home })
 
 const steps = [
   {
-    title: 'Observe locally',
-    body: 'A local service snapshots processes, TCP listeners and user LaunchAgents into a private SQLite history with seven-day retention.',
+    title: 'Observa localmente',
+    body: 'El servicio registra procesos, escuchas TCP, firewall y cambios en archivos seleccionados de persistencia y configuración. Conserva siete días de evidencia local.',
   },
   {
-    title: 'Investigate with Claude',
-    body: 'An agent built on the Claude Agent SDK chooses its own read-only evidence queries, weighs benign explanations, and forms hypotheses.',
+    title: 'Investiga con Claude',
+    body: 'Claude Agent SDK consulta evidencia de solo lectura y considera explicaciones benignas. Con autorización separada, investiga señales automáticamente: una vez cada cinco minutos y doce intentos en 24 horas.',
   },
   {
-    title: 'Review the evidence',
-    body: 'Every finding cites the observations it relies on, lists counterevidence and limitations, and proposes actions that are never applied for you.',
+    title: 'Revisa la evidencia',
+    body: 'Las señales conservan evidencia anterior y posterior. Los hallazgos citan observaciones, incluyen contraevidencia y limitaciones y proponen acciones que requieren aprobación.',
   },
 ]
 
 const features = [
   {
-    title: 'Native macOS app',
-    body: 'SwiftUI dashboard and menu-bar client talking to the agent over a private Unix socket.',
+    title: 'App nativa de macOS',
+    body: 'Panel SwiftUI y barra de menús conectados mediante un socket Unix privado. Cerrar la ventana mantiene la vigilancia; salir detiene el agente propio.',
   },
   {
-    title: 'Privacy by default',
-    body: 'Cloud inference is opt-in. Paths, code, secrets and free text are stripped; only minimized metadata leaves the Mac.',
+    title: 'Privacidad por defecto',
+    body: 'El procesamiento en la nube requiere consentimiento. Solo salen metadatos minimizados; el contenido de los archivos vigilados no se guarda ni se envía.',
   },
   {
-    title: 'No shell, no surprises',
-    body: 'The model gets bounded read-only tools. No subprocesses, no arbitrary file reads, no automatic remediation.',
+    title: 'Herramientas acotadas',
+    body: 'El modelo solo recibe herramientas de evidencia de solo lectura. Sin shell arbitraria, lecturas libres del disco ni remediación automática.',
   },
   {
-    title: 'Keys in Keychain',
-    body: 'Your Anthropic key is verified, then stored in macOS Keychain. Never in logs, settings, or prompts.',
+    title: 'Claves en el Llavero',
+    body: 'La clave de Anthropic se verifica y se guarda en el Llavero de macOS. Nunca aparece en registros, ajustes ni prompts.',
   },
   {
-    title: 'Untrusted telemetry',
-    body: 'Observed content is treated as evidence, never as instructions — built to resist prompt injection.',
+    title: 'Telemetría no confiable',
+    body: 'Los datos observados se tratan como evidencia, nunca como instrucciones. Una señal requiere revisión y no confirma un compromiso.',
   },
   {
-    title: 'Local model option',
-    body: 'Prefer to stay offline? Point it at any OpenAI-compatible local endpoint with tool calling.',
+    title: 'Opción de modelo local',
+    body: 'La detección local funciona sin conexión ni clave. También puedes configurar un endpoint local compatible con OpenAI y llamadas a herramientas.',
   },
 ]
 
@@ -55,27 +55,27 @@ function Home() {
         <img src="/icon.png" alt="" width={96} height={96} />
         <h1>Arkangel</h1>
         <p className="lead">
-          An AI investigator for your Mac. It watches what runs locally, asks Claude to reason over the evidence,
-          and tells you what deserves a closer look — and why.
+          Un investigador con IA para tu Mac. Detecta cambios locales, pide a Claude que analice la evidencia
+          y te avisa de qué merece una revisión y por qué.
         </p>
         <div className="cta">
           <a className="button primary" href={DOWNLOAD}>
-            Download for macOS
+            Descargar para macOS
           </a>
           <a className="button" href={REPO}>
-            View on GitHub
+            Ver en GitHub
           </a>
         </div>
-        <p className="note">macOS 15+ · Developer preview</p>
+        <p className="note">macOS 15+ · Versión preliminar para desarrollo</p>
       </header>
 
       <section>
-        <h2>Anatomy of an investigation</h2>
+        <h2>Anatomía de una investigación</h2>
         <Figure />
       </section>
 
       <section>
-        <h2>How it works</h2>
+        <h2>Cómo funciona</h2>
         <ol className="steps">
           {steps.map((s, i) => (
             <li key={s.title}>
@@ -88,7 +88,7 @@ function Home() {
       </section>
 
       <section>
-        <h2>Built defensive-first</h2>
+        <h2>Diseñado para investigar y defender</h2>
         <div className="grid">
           {features.map((f) => (
             <article key={f.title}>
@@ -100,28 +100,28 @@ function Home() {
       </section>
 
       <section>
-        <h2>For the judges</h2>
-        <p>Run it from source in three steps:</p>
+        <h2>Para el jurado</h2>
+        <p>Ejecuta el código fuente en tres pasos:</p>
         <pre>
           <code>{`git clone ${REPO} && cd arkangel
 bash scripts/setup-agent.sh
 cd apps/macos && swift run Guardian`}</code>
         </pre>
         <p>
-          Then paste an Anthropic API key in <strong>Connect your investigator</strong> and ask “What deserves
-          investigation?”. This is an early prototype, not a validated antivirus: no finding never means your Mac is
-          safe.
+          Activa la vigilancia local o añade una clave de Anthropic en <strong>Conecta tu investigador</strong>.
+          En Señales puedes autorizar investigaciones automáticas y avisos de macOS. Es un prototipo temprano,
+          no un antivirus validado: la ausencia de hallazgos no garantiza seguridad.
         </p>
       </section>
 
       <footer>
-        <a href={REPO}>GitHub</a> · Built for the hackathon with Claude
+        <a href={REPO}>GitHub</a> · Creado para el hackathon con Claude
       </footer>
     </main>
   )
 }
 
-// The same figure the macOS app embeds, built by packages/figure/build.mjs. It reports its height.
+// Figura compartida con macOS, generada por packages/figure/build.mjs; comunica su altura.
 function Figure() {
   const ref = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(620)
@@ -132,7 +132,7 @@ function Figure() {
       }
     }
     window.addEventListener('message', onMessage)
-    // The figure may report before this listener exists; ask again.
+    // La figura puede comunicar su altura antes de registrar el receptor; se vuelve a solicitar.
     ref.current?.contentWindow?.postMessage('anatomy:measure', '*')
     return () => window.removeEventListener('message', onMessage)
   }, [])
@@ -142,7 +142,7 @@ function Figure() {
       className="figure"
       src="/anatomy.html#web"
       onLoad={(event) => event.currentTarget.contentWindow?.postMessage('anatomy:measure', '*')}
-      title="Interactive isometric figure: Arkangel's investigation bench"
+      title="Figura isométrica interactiva: la mesa de investigación de Arkangel"
       style={{ height }}
     />
   )

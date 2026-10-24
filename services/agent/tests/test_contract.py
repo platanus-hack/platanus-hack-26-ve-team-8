@@ -1,4 +1,4 @@
-"""Python outputs must match packages/contracts/fixtures.json, which the Swift models decode."""
+"""La salida de Python debe coincidir con los ejemplos que decodifica Swift."""
 import json
 import tempfile
 import unittest
@@ -22,7 +22,7 @@ def shape(value):
 
 class ContractTests(unittest.TestCase):
     def assertMatches(self, actual, fixture):
-        # Empty lists and null last_scan carry no element type; compare keys there, shapes elsewhere.
+        # Las listas vacías y los valores nulos no proporcionan tipos de elementos.
         self.assertEqual(set(actual), set(fixture))
         for key, value in actual.items():
             if value not in ([], None):
@@ -35,8 +35,28 @@ class ContractTests(unittest.TestCase):
                                       investigator=lambda *a, **k: None)
             self.assertMatches(service.scan(), FIXTURES["status"])
 
+    def test_alert_and_automation_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory) / "test.sqlite3")
+            service = GuardianService(store, collector=lambda: ([], []))
+            example = FIXTURES["alert"]
+            store.detect([example["before"]], [])
+            store.detect([example["after"]], [])
+            result = service.dispatch({"method": "alerts"})["items"][0]
+            self.assertMatches(result, example)
+            status = service.dispatch({"method": "alerts.acknowledge", "params": {"id": result["id"]}})
+            self.assertEqual(status["alerts"], {"unacknowledged": 0, "pending": 1})
+            status = service.dispatch({"method": "automation.set", "params": {"enabled": True, "consent": True}})
+            self.assertTrue(status["automation"]["enabled"])
+            self.assertEqual(status["automation"]["reason"], "paused")
+            for request in ({"method": "alerts", "params": {"limit": True}},
+                            {"method": "alerts.acknowledge", "params": {"id": "inexistente"}},
+                            {"method": "automation.set", "params": {"enabled": "true", "consent": True}}):
+                with self.assertRaises(ValueError):
+                    service.dispatch(request)
+
     def test_observation_matches_fixture(self):
-        self.assertMatches(_observation("process", "processes", "123", "Process example", {"pid": 123}),
+        self.assertMatches(_observation("process", "processes", "123", "Proceso de ejemplo", {"pid": 123}),
                            FIXTURES["observation"])
 
     def test_progress_matches_fixture(self):
@@ -46,7 +66,7 @@ class ContractTests(unittest.TestCase):
             def investigator(observations, question, coverage, on_step):
                 on_step(FIXTURES["progress"]["steps"][0])
                 seen.append(service.dispatch({"method": "investigation.progress"}))
-                return _result("Fixture")
+                return _result("Ejemplo")
 
             service = GuardianService(Store(Path(directory) / "test.sqlite3"),
                                       collector=lambda: ([], []), investigator=investigator)
@@ -55,7 +75,7 @@ class ContractTests(unittest.TestCase):
             self.assertFalse(service.dispatch({"method": "investigation.progress"})["active"])
 
     def test_investigation_matches_fixture(self):
-        self.assertMatches(_result("Fixture"), FIXTURES["investigation"])
+        self.assertMatches(_result("Ejemplo"), FIXTURES["investigation"])
 
 
 if __name__ == "__main__":

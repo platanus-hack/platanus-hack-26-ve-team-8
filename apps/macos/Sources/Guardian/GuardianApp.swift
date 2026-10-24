@@ -1,7 +1,20 @@
 import SwiftUI
+import UserNotifications
 
 // Los valores del protocolo siguen en inglés; solo se traducen al mostrarlos.
 private let spanishLabels = [
+    "file": "Archivo", "detection": "Señal", "user_launch_files": "Archivos LaunchAgents del usuario",
+    "system_launch_agents": "LaunchAgents del sistema", "system_launch_daemons": "LaunchDaemons del sistema",
+    "shell_files": "Archivos de inicio del shell", "disabled": "Automatización desactivada",
+    "paused": "Vigilancia en pausa", "provider_unavailable": "Proveedor no disponible",
+    "cloud_disabled": "Procesamiento en la nube desactivado", "investigating": "Investigando",
+    "no_signals": "Sin señales pendientes", "quota_exhausted": "Límite de 24 horas alcanzado",
+    "cooldown": "Esperando entre investigaciones", "ready": "Listo para investigar",
+    "created": "Creado", "modified": "Modificado", "deleted": "Eliminado",
+    "file_changed": "Cambio de archivo", "firewall_weakened": "Protección del firewall reducida",
+    "listener_exposed": "Nueva escucha expuesta", "launch_daemon": "LaunchDaemon",
+    "shell_startup": "Inicio del shell", "regular": "Archivo regular", "symlink": "Enlace simbólico", "other": "Otro",
+
     "inconclusive": "No concluyente", "needs_review": "Requiere revisión", "no_finding": "Sin hallazgos",
     "partial": "Parcial", "available": "Disponible", "unavailable": "No disponible", "denied": "Denegado",
     "unknown": "Desconocido", "unsupported": "No compatible", "error": "Error", "ok": "Correcto",
@@ -17,6 +30,12 @@ func es(_ value: String) -> String { spanishLabels[value] ?? value }
 @MainActor
 @Observable
 final class GuardianModel {
+    var alerts: [AgentAlert] = []
+    var showAlerts = false
+    var notificationDetail: String?
+    private var notificationRequested = false
+    private var polling: Task<Void, Never>?
+    private var notified = Set(UserDefaults.standard.stringArray(forKey: "guardian.notifiedAlerts") ?? [])
     var status: AgentStatus?
     var observations: [AgentObservation] = []
     var investigations: [Investigation] = []
@@ -25,7 +44,7 @@ final class GuardianModel {
     var investigating = false
     /// Última investigación del agente, incluidas las iniciadas por `serve --watch`.
     var progress: InvestigationProgress?
-    /// Entidades presentes cuando la vista En vivo vio evidencia por primera vez; cualquier otra es una detección.
+    /// Referencia visual de procesos; las señales persistentes se mantienen por separado.
     var baseline: Set<String>?
     var baselineDate: Date?
     // Se incrementa al llegar un resultado local para que una actualización anterior en curso no lo descarte.
@@ -98,6 +117,8 @@ final class GuardianModel {
                 try ProviderKeychain.save(key)
             }
             status = configuredStatus
+            UserDefaults.standard.set(true, forKey: "guardian.localMonitoring")
+            if configuredStatus.monitoring { await requestNotifications() }
             if !restoring { apiKey = "" }
             UserDefaults.standard.set(true, forKey: "guardian.cloudConsent")
             setupVisible = false
@@ -107,7 +128,7 @@ final class GuardianModel {
     let client = AgentClient()
 
     func refresh() async {
-        guard !busy, !setupVisible, apiKey.isEmpty else { return }
+        guard !busy else { return }
         busy = true
         defer { busy = false }
         let version = investigationsVersion
@@ -115,15 +136,23 @@ final class GuardianModel {
             let newStatus = try await client.status()
             let newObservations = try await client.observations()
             let newInvestigations = try await client.investigations()
+            var newAlerts: [AgentAlert] = []
+            if newStatus.alerts != nil { newAlerts = try await client.alerts() }
             status = newStatus
             if newStatus.onboarding_required == false { restoreAttempted = false }
-            if newStatus.onboarding_required == true && cloudConsent && !restoreAttempted {
+            if newStatus.onboarding_required == true && cloudConsent && !restoreAttempted && !setupVisible && apiKey.isEmpty {
                 restoreAttempted = true
                 if let saved = try ProviderKeychain.read() {
                     status = try await client.configure(saved)
                 }
             }
             observations = newObservations
+            if baseline == nil && !observations.isEmpty { setBaseline() }
+            alerts = newAlerts
+            if newStatus.monitoring {
+                await requestNotifications()
+                await notifyNewAlerts()
+            }
             if version == investigationsVersion { investigations = newInvestigations }
             error = nil
         } catch {
@@ -148,7 +177,9 @@ final class GuardianModel {
         do {
             switch operation {
             case "scan": status = try await client.scan()
-            default: status = try await client.setMonitoring(!(status?.monitoring ?? false))
+            default:
+                status = try await client.setMonitoring(!(status?.monitoring ?? false))
+                if status?.monitoring == true { await requestNotifications() }
             }
             error = nil
         } catch {
@@ -160,10 +191,96 @@ final class GuardianModel {
         await refresh()
     }
 
+    func startPolling() {
+        guard polling == nil else { return }
+        polling = Task { [weak self] in
+            if UserDefaults.standard.bool(forKey: "guardian.localMonitoring") {
+                await self?.startLocalMonitoring(resume: false)
+            }
+            await self?.restoreOnStartup()
+            while !Task.isCancelled {
+                await self?.refresh()
+                await self?.pollProgress()
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            }
+        }
+    }
+
+    func stopPolling() { polling?.cancel(); polling = nil }
+
+    func startLocalMonitoring(resume: Bool = true) async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            if (try? await client.status()) == nil { try LocalRuntime.shared.start() }
+            let deadline = Date().addingTimeInterval(10)
+            while Date() < deadline {
+                if let current = try? await client.status() {
+                    status = current
+                    UserDefaults.standard.set(true, forKey: "guardian.localMonitoring")
+                    if resume && !current.monitoring { status = try await client.setMonitoring(true) }
+                    if status?.monitoring == true { await requestNotifications() }
+                    error = nil
+                    return
+                }
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            throw ClientError(message: "El agente local no estuvo listo; revisa el entorno de Python.")
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func setAutomation(_ enabled: Bool) async {
+        do { status = try await client.setAutomation(enabled); error = nil }
+        catch { self.error = error.localizedDescription }
+    }
+
+    func acknowledge(_ id: String) async {
+        do { status = try await client.acknowledge(id); await refresh() }
+        catch { self.error = error.localizedDescription }
+    }
+
+    func requestNotifications() async {
+        guard !notificationRequested else { return }
+        notificationRequested = true
+        guard Bundle.main.bundleIdentifier != nil else {
+            notificationDetail = "Este ejecutable sin bundle no admite avisos de macOS; consulta las señales en la barra de menús."
+            return
+        }
+        do {
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            notificationDetail = granted ? nil : "Notificaciones desactivadas; consulta las señales en la barra de menús."
+        } catch {
+            notificationDetail = "No se pudieron activar las notificaciones; las señales siguen en la barra de menús."
+        }
+    }
+
+    private func notifyNewAlerts() async {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let retained = Set(alerts.map(\.id))
+        notified.formIntersection(retained)
+        let fresh = alerts.filter { !$0.acknowledged && !notified.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Guardian detectó cambios que requieren revisión"
+        content.body = "Hay \(fresh.count) señales nuevas. Abre la app para revisar su evidencia."
+        content.sound = .default
+        do {
+            try await center.add(UNNotificationRequest(identifier: "guardian-alerts", content: content, trigger: nil))
+            notified.formUnion(fresh.map(\.id))
+            UserDefaults.standard.set(Array(notified), forKey: "guardian.notifiedAlerts")
+        } catch { notificationDetail = "No se pudo enviar el aviso; consulta las señales en la app." }
+    }
+
     var detections: [AgentObservation] {
-        guard let baseline else { return [] }
+        let baseline = baseline ?? []
         var seen = Set<String>()
-        return observations.filter { !baseline.contains($0.key) && seen.insert($0.key).inserted }
+        return alerts.filter { !$0.acknowledged }.map(\.signal) + observations.filter {
+            $0.kind == "process" && !baseline.contains($0.key) && seen.insert($0.key).inserted
+        }
     }
 
     func setBaseline() {
@@ -199,14 +316,14 @@ final class GuardianModel {
 @main
 struct GuardianApp: App {
     @NSApplicationDelegateAdaptor(GuardianAppDelegate.self) private var appDelegate
-    @State private var model = GuardianModel()
+    private var model: GuardianModel { appDelegate.model }
     var body: some Scene {
         WindowGroup("Arkangel", id: "dashboard") {
             Dashboard(model: model)
                 .frame(minWidth: 860, minHeight: 620)
         }
         .defaultSize(width: 1120, height: 760)
-        MenuBarExtra("Arkangel", systemImage: model.status == nil ? "shield.slash" : "shield.lefthalf.filled") {
+        MenuBarExtra("Arkangel", systemImage: (model.status?.alerts?.unacknowledged ?? 0) > 0 ? "exclamationmark.shield" : model.status == nil ? "shield.slash" : "shield.lefthalf.filled") {
             GuardianMenu(model: model)
         }
     }
@@ -220,9 +337,11 @@ struct GuardianMenu: View {
         if let status = model.status {
             Text(status.monitoring ? "Monitoreo activado" : "Monitoreo en pausa")
             Text("\(status.observation_count) observaciones registradas")
+            Text("\(status.alerts?.unacknowledged ?? 0) señales sin revisar")
         }
         Divider()
         Button("Abrir Arkangel") { openWindow(id: "dashboard") }
+        Button("Revisar señales") { model.showAlerts = true; openWindow(id: "dashboard") }
         Button("Configurar proveedor…") {
             model.setupVisible = true
             openWindow(id: "dashboard")

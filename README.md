@@ -108,8 +108,10 @@ PYTHONPATH=services/agent/src .venv/bin/python -m guardian serve --watch --auto-
 
 La URL debe incluir `/v1/chat/completions`. La variable opcional `GUARDIAN_MODEL_KEY`
 se lee del entorno; nunca pongas una clave real en el repositorio. La investigación
-automática revisa la evidencia modificada como máximo una vez por minuto y hace una
-revisión exploratoria al menos cada quince minutos mientras el monitoreo está activo.
+automática requiere autorización separada: la casilla de Señales o `--auto-investigate`.
+Agrupa señales pendientes, con un máximo de un intento cada cinco minutos y doce
+intentos en una ventana móvil de 24 horas, incluidos los fallidos. La autorización y
+los intentos se conservan al reiniciar. No hay investigaciones periódicas sin señales.
 Las llamadas al modelo no bloquean el recolector de instantáneas. La investigación
 manual está disponible en la app o en la CLI:
 
@@ -132,8 +134,8 @@ un servicio lanzado externamente.
 
 ## Verificación
 
-See the [testing README](docs/testing/README.md) for a repeatable local smoke test,
-the colleague/attacker exercise, and separate detection and prevention criteria.
+Consulta la [guía de pruebas](docs/testing/README.md) para la comprobación local,
+el ejercicio controlado y los criterios separados de detección y prevención.
 
 ```sh
 PYTHONPATH=services/agent/src .venv/bin/python -m unittest discover -s services/agent/tests -v
@@ -146,7 +148,8 @@ instrucciones de la app para macOS.
 
 ## Límites actuales
 
-- Instantáneas de procesos y escuchas TCP, además de metadatos de los LaunchAgents del usuario.
+- Instantáneas de procesos, escuchas TCP, firewall y metadatos de los LaunchAgents del usuario,
+  además de los archivos seleccionados descritos a continuación.
 - Sin historial de conexiones salientes, rastreo de acceso al sistema de archivos,
   escaneos remotos, inspección completa del disco ni captura garantizada de procesos
   de corta duración.
@@ -171,3 +174,46 @@ instrucciones de la app para macOS.
 No se incluye código de HolmesGPT/Vigil. Las investigaciones con Anthropic usan el
 Claude Agent SDK oficial; los modelos locales compatibles con OpenAI mantienen el
 pequeño bucle propio.
+
+## Vigilancia de cambios y señales
+
+En la app puedes **Vigilar localmente sin conectar Claude**. El servicio consulta la
+telemetría aproximadamente cada cinco segundos después de terminar el ciclo anterior
+y revisa archivos cada treinta segundos como mínimo entre revisiones terminadas.
+Una instantánea manual fuerza también la revisión de archivos, sin esperar al intervalo.
+No se solapan los escaneos. La suspensión del Mac y los recolectores lentos pueden
+retrasarlos; no se garantiza capturar cambios transitorios.
+
+Se vigilan los `.plist` directamente en `~/Library/LaunchAgents`,
+`/Library/LaunchAgents` y `/Library/LaunchDaemons`, además de `~/.zshenv`,
+`~/.zprofile`, `~/.zshrc`, `~/.zlogin`, `~/.bash_profile`, `~/.bashrc` y `~/.profile`.
+Solo se leen archivos regulares de hasta 1 MiB. Se guardan presencia, tipo,
+propietario, permisos, tamaño y SHA-256; nunca su contenido. Los enlaces no se siguen.
+Los archivos mayores conservan solo metadatos y declaran cobertura parcial.
+Una lectura inestable o denegada conserva la referencia anterior y no inventa una
+eliminación. La referencia persiste independientemente del historial de siete días.
+La primera lectura establece una referencia, no declara confiable el equipo.
+
+Las señales registran cambios de archivos, debilitamiento del firewall y nuevas
+escuchas TCP fuera de loopback. Un proceso nuevo no dispara Claude por sí solo.
+Reiniciar el mismo servidor con otro PID no crea una señal si conserva ejecutable,
+dirección y puerto. Las señales no son pruebas de compromiso.
+
+**Señales** muestra evidencia anterior y posterior, cobertura, cuota y motivo de espera.
+Marcar una señal como revisada no borra su evidencia ni cancela su investigación.
+Las señales e investigaciones se conservan siete días. Sin proveedor o ante fallos,
+las señales permanecen pendientes hasta investigarse o vencer su retención.
+La cuota limita intentos automáticos, no importes monetarios ni investigaciones manuales.
+Una investigación inconclusa sin hipótesis queda pendiente para reintentar con los mismos límites.
+
+La autorización para conectar Anthropic no activa la automatización. Su casilla
+separada autoriza llamadas de pago con metadatos minimizados: categorías, reglas,
+cambios de presencia y permisos. No se envían rutas, nombres privados, huellas ni
+contenido. El SDK mantiene sus herramientas acotadas y ninguna remediación se aplica
+sin aprobación individual de macOS.
+
+Al activar la vigilancia se pide permiso para notificaciones genéricas de señales
+nuevas. Si se deniega, el indicador de la barra de menús y la pantalla de señales
+siguen disponibles. La consulta de estado continúa con la ventana cerrada.
+Pausar impide nuevas investigaciones automáticas; una ya iniciada puede terminar.
+Salir detiene únicamente el agente iniciado por la app; no se instala un servicio de inicio.

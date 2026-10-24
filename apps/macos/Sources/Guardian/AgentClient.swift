@@ -8,6 +8,9 @@ struct Coverage: Decodable, Identifiable, Sendable {
     let detail: String
 }
 struct AgentStatus: Decodable, Sendable {
+    let automation: AutomationState?
+    let alerts: AlertCounts?
+    let last_file_scan: String?
     let monitoring: Bool
     let provider: String
     let coverage: [Coverage]
@@ -18,6 +21,26 @@ struct AgentStatus: Decodable, Sendable {
     let firewall: FirewallState?
     let exposed: [ExposedPort]?
     let blocked_ports: [Int]?
+}
+struct AutomationState: Decodable, Sendable {
+    let enabled: Bool
+    let reason: String
+    let remaining: Int
+    let cooldown_seconds: Int
+}
+struct AlertCounts: Decodable, Sendable {
+    let unacknowledged: Int
+    let pending: Int
+}
+struct AgentAlert: Decodable, Identifiable, Sendable {
+    let id: String
+    let created_at: String
+    let reason: String
+    let signal: AgentObservation
+    let before: AgentObservation?
+    let after: AgentObservation
+    let acknowledged: Bool
+    let investigated: Bool
 }
 struct FirewallState: Decodable, Sendable {
     let firewall_enabled: Bool
@@ -49,7 +72,7 @@ enum JSONValue: Decodable, Sendable {
 
     var display: String {
         switch self {
-        case .string(let text): text
+        case .string(let text): es(text)
         case .number(let number): String(number)
         case .boolean(let flag): String(flag)
         case .null: "null"
@@ -127,6 +150,16 @@ struct AgentClient: Sendable {
     func scan() async throws -> AgentStatus { try await request("scan") }
     func setMonitoring(_ enabled: Bool) async throws -> AgentStatus {
         try await request("monitoring.set", params: ["enabled": enabled])
+    }
+    func alerts() async throws -> [AgentAlert] {
+        let result: Items<AgentAlert> = try await request("alerts", params: ["limit": 500])
+        return result.items
+    }
+    func acknowledge(_ id: String) async throws -> AgentStatus {
+        try await request("alerts.acknowledge", params: ["id": id])
+    }
+    func setAutomation(_ enabled: Bool) async throws -> AgentStatus {
+        try await request("automation.set", params: ["enabled": enabled, "consent": enabled])
     }
     func observations() async throws -> [AgentObservation] {
         let result: Items<AgentObservation> = try await request("observations", params: ["limit": 500])
