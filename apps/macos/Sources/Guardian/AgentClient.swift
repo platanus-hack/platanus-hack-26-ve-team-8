@@ -49,6 +49,7 @@ struct AgentObservation: Decodable, Identifiable, Sendable {
     let entity: String
     let summary: String
     let attributes: [String: JSONValue]
+    var key: String { kind + "|" + entity }
 }
 struct Hypothesis: Decodable, Sendable {
     let statement: String
@@ -74,6 +75,16 @@ struct Investigation: Decodable, Identifiable, Sendable {
     let steps: [InvestigationStep]
     let proposed_actions: [ProposedAction]
     let limitations: [String]
+}
+struct ProgressStep: Decodable, Sendable {
+    let tool: String
+    let summary: String
+    let evidence_ids: [String]
+}
+struct InvestigationProgress: Decodable, Sendable {
+    let active: Bool
+    let started_at: String?
+    let steps: [ProgressStep]
 }
 private struct Items<T: Decodable & Sendable>: Decodable, Sendable { let items: [T] }
 private struct Envelope<T: Decodable>: Decodable {
@@ -106,6 +117,7 @@ struct AgentClient: Sendable {
         let result: Items<Investigation> = try await request("investigations")
         return result.items
     }
+    func progress() async throws -> InvestigationProgress { try await request("investigation.progress") }
     func investigate(_ question: String) async throws -> Investigation {
         try await request("investigate", params: ["question": question])
     }

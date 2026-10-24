@@ -57,7 +57,7 @@ final class LocalRuntime {
         }
         let python = root.appendingPathComponent(".venv/bin/python")
         guard FileManager.default.isExecutableFile(atPath: python.path) else {
-            throw ClientError(message: "Python environment missing. In the Guardian repository run: bash scripts/setup-agent.sh. Set GUARDIAN_REPO_ROOT if this executable was moved. The app does not install dependencies.")
+            throw ClientError(message: "Python environment missing. In the Arkangel repository run: bash scripts/setup-agent.sh. Set GUARDIAN_REPO_ROOT if this executable was moved. The app does not install dependencies.")
         }
         let child = Process()
         child.executableURL = python
@@ -74,7 +74,7 @@ final class LocalRuntime {
         child.standardError = FileHandle.nullDevice
         child.standardInput = FileHandle.nullDevice
         do { try child.run() } catch {
-            throw ClientError(message: "Could not start Guardian. Check GUARDIAN_REPO_ROOT and the repository Python environment.")
+            throw ClientError(message: "Could not start Arkangel. Check GUARDIAN_REPO_ROOT and the repository Python environment.")
         }
         process = child
     }

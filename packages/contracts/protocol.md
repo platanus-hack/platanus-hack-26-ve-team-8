@@ -16,6 +16,8 @@ Methods:
 - scan -> status (explicit read-only local snapshot)
 - investigate -> Investigation (params question optional; uses recorded evidence)
 - monitoring.set -> status (params enabled bool; foreground service lifecycle only)
+- investigation.progress -> {"active":bool,"started_at":str|null,"steps":[{"tool":str,"summary":str,
+  "evidence_ids":[str]}]} (latest investigation, including one started by --watch; poll while active)
 
 Observation: {"id":str,"timestamp":ISO8601 UTC str,"kind":str,
 "source":str,"entity":str,"summary":str,"attributes":object}.
@@ -37,7 +39,8 @@ Each observation has all fields above; UUID ids, UTC time. No persistent state i
 Only local read-only inspection; fixed commands; no environment/command-line secrets.
 
 investigator.py: investigate(observations: list[dict], question: str = "",
-coverage: list[dict] | None = None) -> dict (Investigation).
+coverage: list[dict] | None = None, on_step=None) -> dict (Investigation).
+on_step, when given, receives each tool step with the real observation IDs it read.
 Provider selection from GUARDIAN_MODEL_ENDPOINT / GUARDIAN_MODEL / GUARDIAN_MODEL_KEY.
 GUARDIAN_PROVIDER selects anthropic or openai. Default is anthropic with
 claude-haiku-5-5 and ANTHROPIC_API_KEY; an existing GUARDIAN_MODEL_ENDPOINT selects

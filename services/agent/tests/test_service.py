@@ -25,7 +25,7 @@ class ServiceTests(unittest.TestCase):
         self.service = GuardianService(self.store, collector=lambda: ([observation()], self.coverage),
                                        investigator=self.investigate)
 
-    def investigate(self, observations, question, coverage):
+    def investigate(self, observations, question, coverage, on_step=None):
         return {"id": "case-one", "created_at": datetime.now(timezone.utc).isoformat(),
                 "status": "inconclusive", "title": question, "summary": "Fixture",
                 "hypotheses": [], "steps": [], "proposed_actions": [],

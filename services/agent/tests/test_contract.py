@@ -39,6 +39,21 @@ class ContractTests(unittest.TestCase):
         self.assertMatches(_observation("process", "processes", "123", "Process example", {"pid": 123}),
                            FIXTURES["observation"])
 
+    def test_progress_matches_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            seen = []
+
+            def investigator(observations, question, coverage, on_step):
+                on_step(FIXTURES["progress"]["steps"][0])
+                seen.append(service.dispatch({"method": "investigation.progress"}))
+                return _result("Fixture")
+
+            service = GuardianService(Store(Path(directory) / "test.sqlite3"),
+                                      collector=lambda: ([], []), investigator=investigator)
+            service.investigate()
+            self.assertMatches(seen[0], FIXTURES["progress"])
+            self.assertFalse(service.dispatch({"method": "investigation.progress"})["active"])
+
     def test_investigation_matches_fixture(self):
         self.assertMatches(_result("Fixture"), FIXTURES["investigation"])
 

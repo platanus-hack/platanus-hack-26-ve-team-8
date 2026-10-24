@@ -36,6 +36,7 @@ class GuardianService:
         self.coverage = []
         self.last_scan = None
         self.dirty = False
+        self.progress = {"active": False, "started_at": None, "steps": []}
         self.stop = threading.Event()
 
     def status(self):
@@ -75,8 +76,10 @@ class GuardianService:
                     coverage.append({"source": "evidence_window", "status": "partial",
                                      "detail": f"Investigation sees the latest {len(observations)} of {total} retained observations."})
                 self.dirty = False
+                self.progress = {"active": True, "started_at": datetime.now(timezone.utc).isoformat(), "steps": []}
             try:
-                result = self.investigator(observations, question=question, coverage=coverage)
+                result = self.investigator(observations, question=question, coverage=coverage,
+                                           on_step=self.record_step)
             except Exception:
                 with self.lock:
                     self.dirty = True
@@ -85,7 +88,14 @@ class GuardianService:
                 self.store.save_investigation(result)
             return result
         finally:
+            with self.lock:
+                self.progress["active"] = False
             self.investigation_lock.release()
+
+    def record_step(self, step):
+        with self.lock:
+            if len(self.progress["steps"]) < 50:
+                self.progress["steps"].append(step)
 
     def dispatch(self, request):
         method = request.get("method")
@@ -110,6 +120,9 @@ class GuardianService:
             if not isinstance(question, str) or len(question) > 4000:
                 raise ValueError("question must be text of at most 4000 characters")
             return self.investigate(question)
+        if method == "investigation.progress":
+            with self.lock:
+                return {**self.progress, "steps": list(self.progress["steps"])}
         if method == "monitoring.set":
             enabled = params.get("enabled")
             if type(enabled) is not bool:

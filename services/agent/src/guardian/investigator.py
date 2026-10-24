@@ -79,7 +79,8 @@ def _result(reason: str) -> dict:
             "proposed_actions": [], "limitations": [reason]}
 
 
-def investigate(observations: list[dict], question: str = "", coverage: list[dict] | None = None) -> dict:
+def investigate(observations: list[dict], question: str = "", coverage: list[dict] | None = None,
+                on_step=None) -> dict:
     result = _result("Model provider unavailable: set ANTHROPIC_API_KEY, or configure an OpenAI-compatible endpoint and model.")
     provider = provider_config()
     endpoint, model = provider.endpoint, provider.model
@@ -196,8 +197,10 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
             raise ValueError("Invalid tool arguments")
         if name not in {definition["function"]["name"] for definition in TOOLS}:
             raise ValueError("Unknown read-only tool requested")
+        cited = []
         if name == "get_coverage":
             data = {"coverage": (coverage or [])[:30]}
+            summary = f"Read collection coverage for {len(data['coverage'])} sources."
         else:
             matches = []
             for item in records:
@@ -217,9 +220,21 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
             if type(offset) is not int or not 0 <= offset <= 480:
                 raise ValueError("Invalid search offset")
             selected = matches[offset:offset + 20]
-            seen_ids.update(item["id"] for item in selected)
+            cited = [item["id"] for item in selected]
+            seen_ids.update(cited)
             data = {"items": selected, "total_matches": len(matches), "truncated": len(matches) > offset + 20, "offset": offset}
-        steps.append({"tool": name, "summary": "Read recorded snapshot metadata."})
+            if name == "search_observations":
+                query, kind = _text(args.get("query", ""), 80), _text(args.get("kind", ""), 40)
+                scope = f"\u201c{query}\u201d" if query else "all evidence"
+                summary = f"Searched {scope}{f' in {kind}' if kind else ''}: {len(matches)} matches."
+            elif name == "inspect_entity":
+                summary = f"Inspected {_text(args.get('entity', ''), 120)}: {len(matches)} records."
+            else:
+                summary = f"Fetched {len(selected)} evidence records."
+        steps.append({"tool": name, "summary": summary})
+        if on_step:
+            # Progress carries real observation IDs so the local UI can highlight what was read.
+            on_step({"tool": name, "summary": summary, "evidence_ids": [mapping.get(i, i) for i in cited]})
         return {"untrusted_evidence": data}
 
     try:

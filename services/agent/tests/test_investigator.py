@@ -96,8 +96,13 @@ class InvestigationTests(unittest.TestCase):
             payloads.append(copy.deepcopy(payload))
             return responses.pop(0)
         with patch("guardian.investigator._complete", side_effect=complete):
-            result = investigate(OBS, "my SECRET QUESTION", [{"source": "PRIVATE COVERAGE", "status": "ok", "detail": "SECRET DETAIL"}])
+            progress = []
+            result = investigate(OBS, "my SECRET QUESTION", [{"source": "PRIVATE COVERAGE", "status": "ok", "detail": "SECRET DETAIL"}],
+                                 on_step=progress.append)
         serialized = json.dumps(payloads)
+        # Local progress maps opaque aliases back to real IDs; the model payload never sees them.
+        self.assertEqual([(p["tool"], p["evidence_ids"]) for p in progress],
+                         [("search_observations", ["real-id"]), ("get_coverage", [])])
         for private in ("/Users/private", "PRIVATE RAW TEXT", "PASSWORD", "SECRET QUESTION", "PRIVATE COVERAGE", "SECRET DETAIL", "real-id", "secret-source"):
             self.assertNotIn(private, serialized)
         self.assertEqual(result["hypotheses"][0]["evidence_ids"], ["real-id"])
