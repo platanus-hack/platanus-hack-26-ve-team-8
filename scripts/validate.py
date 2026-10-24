@@ -19,12 +19,22 @@ import sys
 import time
 import uuid
 
-# Qué alerta debe producir cada escenario de demo/.
+# Alerta esperada, comando para el otro equipo y fuente de telemetría que debe existir.
 SCENARIOS = {
-    "ssh": ("inbound_connection", 22),         # demo/ssh-attacker.sh
-    "postgres": ("inbound_connection", 5432),  # demo/postgres-attacker.sh
-    "listener": ("listener_exposed", None),    # cualquier escucha nueva fuera de loopback
+    "ssh": ("inbound_connection", 22, "sh ssh-attacker.sh {ip}", "ssh_logins"),
+    "postgres": ("inbound_connection", 5432, "sh postgres-attacker.sh {ip}", "tcp_connections"),
+    "listener": ("listener_exposed", None, None, "tcp_listeners"),  # cualquier escucha nueva fuera de loopback
 }
+
+
+def local_ip():
+    """IP en la red local. Una VPN puede ser la ruta predeterminada, así que primero las interfaces físicas."""
+    for interface in ("en0", "en1"):  # en0 es el Wi-Fi en los portátiles; en1 en Macs con Ethernet
+        address = subprocess.run(["/usr/sbin/ipconfig", "getifaddr", interface],
+                                 capture_output=True, text=True, check=False).stdout.strip()
+        if address:
+            return address
+    return "<ip-de-tu-mac>"
 
 
 def call(sock, method, **params):
@@ -82,7 +92,7 @@ def watch(sock):
 
 
 def drill(sock, scenario, timeout, investigate, report):
-    rule, port = SCENARIOS[scenario]
+    rule, port, command, source = SCENARIOS[scenario]
     checks = []
     def check(name, ok, detail=""):
         checks.append({"check": name, "ok": bool(ok), "detail": detail})
@@ -90,11 +100,14 @@ def drill(sock, scenario, timeout, investigate, report):
 
     status = call(sock, "status")
     check("vigilancia activa", status["monitoring"], "actívala en la app" if not status["monitoring"] else "")
-    for item in status["coverage"]:
-        if item["source"] in {"tcp_listeners", "tcp_connections", "ssh_logins"}:
-            print(f"      cobertura {item['source']}: {item['status']}")
+    sources = {item["source"]: item["status"] for item in status["coverage"]}
+    check(f"telemetría {source} activa", sources.get(source) in {"available", "partial"},
+          sources.get(source) or "falta: el servicio no es la versión de esta rama")
     seen = {a["id"] for a in call(sock, "alerts")["items"]}
-    input(f"Escenario {scenario}: pide al otro equipo que empiece y pulsa Enter.")
+    if command:
+        input(f"Escenario {scenario}: en el otro equipo ejecuta `{command.format(ip=local_ip())}` y pulsa Enter.")
+    else:
+        input(f"Escenario {scenario}: abre una escucha fuera de loopback y pulsa Enter.")
     started = time.time()
     alert = None
     while time.time() - started < timeout and alert is None:
