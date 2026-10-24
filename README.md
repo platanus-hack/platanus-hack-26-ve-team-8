@@ -15,9 +15,13 @@ prototipo temprano, no un antivirus validado ni un monitor de endpoints completo
 
 ## Web deployment (Vercel)
 
-Import this repository with **Root Directory** set to the repository root (`.`),
-not `apps/web`. The root `vercel.json` sets the build command and publishes
-`apps/web/dist/client`. TanStack Start prerenders the landing page to static HTML;
+Set Vercel's **Root Directory** to `apps/web`. Its `vercel.json` runs
+`npm run build` and publishes `dist/client`. Deploying from the repository root
+(`.`) is also supported by the root `vercel.json`, which runs `npm run build:web`
+and publishes `apps/web/dist/client`. Do not mix the command and output directory
+from one root with the other: `build:web` exists only in the root package.
+
+TanStack Start prerenders the landing page to static HTML;
 this deployment does not need a server adapter or environment variables.
 
 After pushing changes, redeploy and check `/`, `/anatomy.html`, and `/icon.png`.
