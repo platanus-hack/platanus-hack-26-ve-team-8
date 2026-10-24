@@ -1,0 +1,4 @@
+node_modules/
+collector/loot/
+*.log
+.DS_Store
