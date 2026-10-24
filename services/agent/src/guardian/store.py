@@ -17,13 +17,18 @@ class Store:
                     payload TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS current_state (
-                    entity_key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL
+                    entity_key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+                    observation_id TEXT
                 );
                 CREATE TABLE IF NOT EXISTS investigations (
                     id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
                     payload TEXT NOT NULL
                 );
             """)
+            columns = [row[1] for row in db.execute("PRAGMA table_info(current_state)")]
+            if "observation_id" not in columns:
+                # Older baselines cannot be tied to retained evidence; prune drops them.
+                db.execute("ALTER TABLE current_state ADD COLUMN observation_id TEXT")
         path.chmod(0o600)
 
     def connect(self):
@@ -43,8 +48,8 @@ class Store:
                     continue
                 db.execute("INSERT OR REPLACE INTO observations VALUES (?, ?, ?)",
                            (item["id"], item["timestamp"], json.dumps(item)))
-                db.execute("INSERT OR REPLACE INTO current_state VALUES (?, ?)",
-                           (key, fingerprint))
+                db.execute("INSERT OR REPLACE INTO current_state VALUES (?, ?, ?)",
+                           (key, fingerprint, item["id"]))
                 added += 1
         return added
 
@@ -76,5 +81,7 @@ class Store:
         with self.connect() as db:
             db.execute("DELETE FROM observations WHERE julianday(timestamp) < julianday('now', '-7 days')")
             db.execute("DELETE FROM investigations WHERE julianday(created_at) < julianday('now', '-7 days')")
+            # A baseline without retained evidence would suppress the entity forever; re-record it next scan.
+            db.execute("DELETE FROM current_state WHERE observation_id IS NULL OR observation_id NOT IN (SELECT id FROM observations)")
             # Bound the baseline cache independently of history retention.
             db.execute("DELETE FROM current_state WHERE rowid NOT IN (SELECT rowid FROM current_state ORDER BY rowid DESC LIMIT 20000)")

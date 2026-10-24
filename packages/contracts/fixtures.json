@@ -1,0 +1,16 @@
+{
+  "status": {"monitoring": true, "provider": "anthropic / claude-haiku-5-5",
+             "onboarding_required": false, "sdk_available": true,
+             "coverage": [{"source": "processes", "status": "partial", "detail": "Snapshot only"}],
+             "observation_count": 1, "last_scan": "2026-10-24T12:00:00+00:00"},
+  "observation": {"id": "1c7f0b5e-0000-4000-8000-000000000001", "timestamp": "2026-10-24T12:00:00+00:00",
+                  "kind": "process", "source": "processes", "entity": "123",
+                  "summary": "Process example", "attributes": {"pid": 123}},
+  "investigation": {"id": "1c7f0b5e-0000-4000-8000-000000000002", "created_at": "2026-10-24T12:00:00+00:00",
+                    "status": "inconclusive", "title": "Investigation inconclusive", "summary": "Fixture",
+                    "hypotheses": [{"statement": "Example", "status": "unconfirmed",
+                                    "evidence_ids": ["1c7f0b5e-0000-4000-8000-000000000001"], "counterevidence": ""}],
+                    "steps": [{"tool": "get_coverage", "summary": "Read coverage"}],
+                    "proposed_actions": [{"title": "Review", "description": "Proposal only"}],
+                    "limitations": ["Snapshot only"]}
+}

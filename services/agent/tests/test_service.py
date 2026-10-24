@@ -3,7 +3,7 @@ import socket
 import tempfile
 import threading
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from guardian.service import GuardianService, Handler, Server
@@ -36,6 +36,34 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(self.store.ingest([observation("two")]), 0)
         self.assertEqual(self.store.ingest([observation("three", "Changed")]), 1)
         self.assertEqual(self.store.count(), 2)
+
+    def test_unchanged_entity_rerecorded_after_retention_expires(self):
+        old = observation("old")
+        old["timestamp"] = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+        self.assertEqual(self.store.ingest([old]), 1)
+        self.store.prune()
+        self.assertEqual(self.store.count(), 0)
+        self.assertEqual(self.store.ingest([observation("new")]), 1)
+        self.store.prune()
+        self.assertEqual(self.store.ingest([observation("again")]), 0)
+
+    def test_status_not_blocked_by_slow_collection(self):
+        collecting, release = threading.Event(), threading.Event()
+        def slow_collector():
+            collecting.set()
+            release.wait(5)
+            return [observation()], self.coverage
+        self.service.collector = slow_collector
+        worker = threading.Thread(target=self.service.scan)
+        worker.start()
+        try:
+            self.assertTrue(collecting.wait(3))
+            done = threading.Event()
+            threading.Thread(target=lambda: (self.service.status(), done.set()), daemon=True).start()
+            self.assertTrue(done.wait(1))
+        finally:
+            release.set()
+            worker.join(5)
 
     def test_scan_then_investigate_persists_evidence_and_case(self):
         self.service.dispatch({"method": "scan"})

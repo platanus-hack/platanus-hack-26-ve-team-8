@@ -120,7 +120,14 @@ struct AgentClient: Sendable {
             setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout.size(ofValue: noSignal)))
             // Nonblocking IO shares one deadline, including connection and response.
             _ = fcntl(descriptor, F_SETFL, O_NONBLOCK)
-            let deadline = Date().addingTimeInterval(method == "investigate" ? 120 : (method == "provider.configure" ? 30 : 10))
+            // A scan may wait for an in-flight monitoring scan; each runs two 10s collectors.
+            let seconds: TimeInterval = switch method {
+            case "investigate": 120
+            case "scan": 60
+            case "provider.configure": 30
+            default: 10
+            }
+            let deadline = Date().addingTimeInterval(seconds)
             func ready(_ events: Int16) throws {
                 let remaining = deadline.timeIntervalSinceNow
                 guard remaining > 0 else { throw ClientError(message: "Agent request timed out.") }

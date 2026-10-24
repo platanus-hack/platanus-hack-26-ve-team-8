@@ -8,6 +8,9 @@ final class GuardianModel {
     var investigations: [Investigation] = []
     var error: String?
     var busy = false
+    var investigating = false
+    // Bumped when a local investigation result lands so an older in-flight refresh cannot drop it.
+    private var investigationsVersion = 0
     var question = ""
     var apiKey = ""
     var cloudConsent = UserDefaults.standard.bool(forKey: "guardian.cloudConsent")
@@ -88,6 +91,7 @@ final class GuardianModel {
         guard !busy, !setupVisible, apiKey.isEmpty else { return }
         busy = true
         defer { busy = false }
+        let version = investigationsVersion
         do {
             let newStatus = try await client.status()
             let newObservations = try await client.observations()
@@ -101,7 +105,7 @@ final class GuardianModel {
                 }
             }
             observations = newObservations
-            investigations = newInvestigations
+            if version == investigationsVersion { investigations = newInvestigations }
             error = nil
         } catch {
             status = nil
@@ -115,11 +119,7 @@ final class GuardianModel {
         do {
             switch operation {
             case "scan": status = try await client.scan()
-            case "monitoring": status = try await client.setMonitoring(!(status?.monitoring ?? false))
-            default:
-                let result = try await client.investigate(question)
-                investigations.removeAll { $0.id == result.id }
-                investigations.insert(result, at: 0)
+            default: status = try await client.setMonitoring(!(status?.monitoring ?? false))
             }
             error = nil
         } catch {
@@ -128,6 +128,23 @@ final class GuardianModel {
             return
         }
         busy = false
+        await refresh()
+    }
+
+    // Separate from busy so status refresh continues during a model request.
+    func investigate() async {
+        guard !investigating else { return }
+        investigating = true
+        defer { investigating = false }
+        do {
+            let result = try await client.investigate(question)
+            investigations.removeAll { $0.id == result.id }
+            investigations.insert(result, at: 0)
+            investigationsVersion += 1
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
         await refresh()
     }
 }
@@ -214,7 +231,7 @@ struct Dashboard: View {
                             Text("Evidence first. Actions stay proposals.").foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if model.busy { ProgressView().controlSize(.small) }
+                        if model.busy || model.investigating { ProgressView().controlSize(.small) }
                         Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                             .help("Refresh recorded agent data").disabled(model.busy)
                     }
@@ -320,8 +337,8 @@ struct Dashboard: View {
                     .textFieldStyle(.roundedBorder).lineLimit(2...4)
                 Button("Investigate recorded evidence", systemImage: "sparkle.magnifyingglass") {
                     selection = .investigations
-                    Task { await model.perform("investigate") }
-                }.buttonStyle(.borderedProminent).disabled(model.busy || model.status == nil || model.status?.onboarding_required == true)
+                    Task { await model.investigate() }
+                }.buttonStyle(.borderedProminent).disabled(model.busy || model.investigating || model.status == nil || model.status?.onboarding_required == true)
             }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

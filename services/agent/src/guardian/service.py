@@ -14,7 +14,7 @@ from .onboarding import sdk_available, validate_key
 
 
 def default_socket() -> Path:
-    return Path(f"/tmp/guardian-{os.getuid()}/agent.sock")
+    return Path(os.getenv("GUARDIAN_SOCKET") or f"/tmp/guardian-{os.getuid()}/agent.sock")
 
 
 class GuardianService:
@@ -30,6 +30,8 @@ class GuardianService:
         self.investigator = investigator
         self.lock = threading.RLock()
         self.investigation_lock = threading.Lock()
+        # Collection can take ~20s; hold only scan_lock so status stays responsive.
+        self.scan_lock = threading.Lock()
         self.monitoring = False
         self.coverage = []
         self.last_scan = None
@@ -52,13 +54,14 @@ class GuardianService:
                     "last_scan": self.last_scan}
 
     def scan(self):
-        with self.lock:
+        with self.scan_lock:
             observations, coverage = self.collector()
-            self.dirty = bool(self.store.ingest(observations)) or self.dirty
-            self.coverage = coverage
-            self.last_scan = datetime.now(timezone.utc).isoformat()
-            self.store.prune()
-            return self.status()
+            with self.lock:
+                self.dirty = bool(self.store.ingest(observations)) or self.dirty
+                self.coverage = coverage
+                self.last_scan = datetime.now(timezone.utc).isoformat()
+                self.store.prune()
+        return self.status()
 
     def investigate(self, question=""):
         if not self.investigation_lock.acquire(blocking=False):

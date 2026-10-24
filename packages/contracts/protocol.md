@@ -1,8 +1,8 @@
 # Guardian local protocol v1
 
 Transport: newline-delimited JSON over a Unix domain socket. One request and one
-response per connection; no TCP port. Default socket: /tmp/guardian-<uid>/agent.sock,
-directory mode 0700. Request: {"id":"uuid", "method":"status", "params":{}}.
+response per connection; no TCP port. Default socket: /tmp/guardian-<uid>/agent.sock
+(override with GUARDIAN_SOCKET on both sides), directory mode 0700. Request: {"id":"uuid", "method":"status", "params":{}}.
 Response: {"id":"uuid", "result": ...} or {"id":"uuid", "error":{"message":"..."}}.
 
 Methods:
@@ -27,7 +27,10 @@ Investigation: {"id":str,"created_at":str,"status":str,"title":str,
 Status examples: inconclusive, needs_review, no_finding. No confidence number implies safety.
 No remediation execution endpoint exists. UI labels actions as proposals, not applied fixes.
 
-## Python module interfaces (parallel implementation contract)
+Example payloads: fixtures.json. services/agent/tests/test_contract.py checks Python
+output against it; keep it in sync with the Swift models in AgentClient.swift.
+
+## Python module interfaces
 
 telemetry.py: collect_snapshot() -> tuple[list[dict], list[dict]] (observations, coverage).
 Each observation has all fields above; UUID ids, UTC time. No persistent state in collector.
@@ -44,10 +47,6 @@ Anthropic uses the official Claude Agent SDK with custom read-only evidence MCP
 tools, no built-in tools or project settings, and bounded turns/time. OpenAI-compatible
 local providers retain the configured chat-completions endpoint and local tool loop.
 Cloud endpoint requires GUARDIAN_ALLOW_CLOUD=1; even then use minimized metadata.
-No external packages required. Tool loop operates on supplied recorded observations.
+Tool loop operates on supplied recorded observations.
 Tests can inject/mock HTTP responses; no real model calls.
 
-Parent owns service.py, store.py, __main__.py, root docs and integration tests.
-Telemetry agent owns telemetry.py and test_telemetry.py.
-Investigator agent owns investigator.py and test_investigator.py.
-macOS agent owns apps/macos entirely. Do not edit another agent's files.
