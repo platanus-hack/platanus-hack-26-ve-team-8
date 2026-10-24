@@ -21,6 +21,10 @@ private let spanishLabels = [
     "processes": "Procesos", "tcp_listeners": "Escuchas TCP", "user_launch_agents": "LaunchAgents del usuario",
     "service": "Servicio", "evidence_window": "Ventana de evidencia",
     "process": "Proceso", "tcp_listener": "Escucha TCP", "launch_agent": "LaunchAgent",
+    "terminate_process": "Forzar terminación", "quarantine_file": "Poner en cuarentena",
+    "pending": "Iniciada; verificar resultado", "termination_requested": "Terminación solicitada",
+    "quarantined": "En cuarentena", "restored": "Restaurado", "restoring": "Restauración iniciada",
+    "recovery_required": "Requiere recuperación manual", "failed": "Falló",
     "application_firewall": "Firewall de aplicaciones", "firewall": "Firewall",
     "search_observations": "Buscar observaciones", "inspect_entity": "Inspeccionar entidad",
     "get_evidence": "Obtener evidencia", "get_coverage": "Leer cobertura", "not_configured": "No configurado",
@@ -171,6 +175,16 @@ final class GuardianModel {
             error = nil
         } catch { self.error = error.localizedDescription }
         busy = false
+    }
+
+    func protect(_ operation: String, params: [String: any Sendable]) async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            status = try await client.protection(operation, params: params)
+            error = nil
+        } catch { self.error = error.localizedDescription }
     }
 
     func perform(_ operation: String) async {

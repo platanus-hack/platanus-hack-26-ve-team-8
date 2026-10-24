@@ -144,3 +144,73 @@ La nube solo recibe enumerados validados, cambios de presencia y permisos y los
 metadatos numéricos ya permitidos. No recibe rutas, nombres privados, contenido ni
 huellas SHA-256. El modelo mantiene exclusivamente herramientas de evidencia de solo
 lectura; ninguna señal ni resultado autoriza remediación.
+
+## Respuesta guiada por IA (opcional)
+
+`status.protection` es aditivo: `{enabled: bool, remaining: int, events: [ResponseEvent]}`.
+Clientes antiguos pueden omitirlo; el cliente nativo solo muestra los controles si existe.
+La web es informativa y no controla el socket. Las propuestas previas de red no cambian.
+
+- `protection.set` recibe `enabled: bool` y exige `consent: true` al activar.
+  Autoriza respuestas automáticas de IA durante la vida de este servicio, sin confirmar
+  cada una. No autoriza llamadas de pago ni activa `automation.set`; esos controles
+  mantienen su consentimiento independiente. No se permite habilitar como root.
+- `protection.restore` recibe `id: string` (ID del evento) y `consent: true`.
+  Restaura una cuarentena completada sin sobrescribir el destino ni ejecutar el archivo;
+  recupera sus permisos y excluye esa ruta y SHA-256 durante la sesión.
+- Ambos devuelven `status`. Desactivar protección invalida resultados en curso.
+  Pausar vigilancia también invalida resultados anteriores; una acción ya iniciada puede terminar.
+
+Antes de una investigación con vigilancia y protección activas, el servicio captura hasta
+20 objetivos locales elegibles. Solo añade `attributes.response_action` (`terminate_process`
+o `quarantine_file`) a la copia de evidencia del investigador. Rutas, hashes e identidades
+nativas permanecen locales; la minimización en la nube conserva únicamente la elegibilidad.
+
+Una propuesta nueva usa `action: {type: "terminate_process"|"quarantine_file",
+observation_id: string, verdict: "malicious"}`. Se conserva solo si el modelo inspeccionó
+la observación, una hipótesis la cita, el tipo coincide con su elegibilidad y el resultado
+es `needs_review`. Los alias de nube se traducen a IDs reales antes de responder. No se
+aceptan rutas, PID o comandos del modelo. Los clientes deben tratar tipos desconocidos
+como propuestas sin botón ejecutable, nunca como `enable_firewall`.
+
+La respuesta ocurre después de guardar la investigación, también en investigaciones
+manuales si la protección está habilitada. Antes de actuar, comprueba nuevamente el
+archivo y su SHA-256 y, para procesos, la identidad nativa de macOS. La señal SIGKILL
+usa PID y versión mediante audit token; no hay fallback a `kill(pid)`. Una señal enviada
+no confirma por sí sola la salida ni impide que un supervisor reinicie el proceso.
+
+Solo son elegibles archivos regulares del usuario dentro de su carpeta personal, de
+hasta 100 MiB, sin enlaces simbólicos/múltiples ni bits setuid/setgid. Se excluyen el
+runtime y los datos de Guardian. La cuarentena se limita a archivos ya vigilados de
+`user_launch_files` y `shell_files`; no inspecciona todo el disco. Los procesos deben
+pertenecer al usuario, coincidir con el inicio registrado y ejecutar un archivo elegible.
+Se excluyen procesos del sistema, el agente y sus antecesores observados. Un script
+interpretado no se identifica a partir de su contenido o de argumentos privados.
+
+`ResponseEvent` contiene `id`, `observation_id`, `investigation_id`, `action`, `path`,
+`sha256`, `created_at`, `status`, `detail` y metadatos locales de recuperación.
+Estados: `pending`, `termination_requested`, `quarantined`, `restoring`, `restored`,
+`recovery_required`, `failed`. El historial no se elimina con la retención de siete días.
+La respuesta muestra las últimas 100 acciones y todas las no resueltas. Hay un límite de
+100 acciones/archivos no resueltos para iniciar cuarentenas y 20 intentos de ejecución
+por sesión. Alcanzar el último desactiva protección; alternar la casilla no reinicia la cuota.
+
+La cuarentena usa `<data-dir>/quarantine/<event-id>/payload`, directorios privados y
+movimiento exclusivo sin sobrescritura; no copia entre volúmenes. Conserva un diario antes
+del movimiento. Una interrupción deja `pending`/`restoring`, o un cambio concurrente puede
+dejar `recovery_required`: conserva los datos y requiere recuperación manual desde el diario.
+No borres estos archivos ni la base de datos. Quitar permisos de ejecución no aísla el
+contenido frente a otro proceso del mismo usuario ni revoca descriptores ya abiertos.
+
+Un veredicto malicioso no es una prueba independiente. La evidencia actual es metadatos;
+si solo demuestra cambios o exposición, el modelo debe abstenerse. Los falsos positivos
+pueden causar pérdida de trabajo o cambios de configuración. Esta respuesta no bloquea
+ataques arbitrarios, ejecución inicial ni conexiones salientes. Los cambios de red mantienen
+la aprobación de administrador existente; no se instala un componente privilegiado.
+
+Referencias de implementación nativa: la estructura de identidad se corresponde con
+[`proc_info_private.h` de Apple](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info_private.h)
+y la señal versionada usa el
+[wrapper `proc_signal_with_audittoken` de Apple](https://github.com/apple-oss-distributions/xnu/blob/main/libsyscall/wrappers/libproc/libproc.c).
+Si la API o el tamaño de la estructura no están disponibles, se omite el objetivo;
+no se degrada a una señal por PID sin versión.

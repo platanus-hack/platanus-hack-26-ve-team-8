@@ -85,7 +85,7 @@ El núcleo es simbólico; la cámara usa exposición fija y se limita el renderi
 tráfico entrante, ataques en curso, verificación de firmas y progresos previstos
 que aparezcan en referencias de diseño no se presentan como datos de esta app.
 
-Las acciones de defensa conservan la aprobación individual de administrador de
+Las acciones de defensa de red conservan la aprobación individual de administrador de
 macOS: no hay ejecución de un lote con una sola aprobación. Los detalles de red y
 las propuestas de los informes permiten las mismas acciones fijas del servicio.
 
@@ -175,7 +175,8 @@ incluido el JSON anidado, en Metadatos registrados. Los hallazgos muestran hipó
 contraevidencia, IDs de observaciones referenciadas, pasos de herramientas,
 limitaciones y acciones propuestas. Una propuesta con una acción validada de bloquear
 puerto o activar el firewall ofrece un botón de aprobación que pide tu contraseña de
-administrador de macOS; las demás se marcan como No aplicada. El contenido registrado
+administrador de macOS; las propuestas de respuesta de IA remiten al historial real de
+acciones y las demás se marcan como No aplicada. El contenido registrado
 nunca se ejecuta como instrucciones. El estado desconectado es explícito; la evidencia
 cargada antes puede seguir visible. La falta de cobertura o de hallazgos nunca implica
 que este Mac sea seguro.
@@ -192,8 +193,9 @@ firmar. La app suprime stdout y stderr del proceso hijo; usa la CLI en primer pl
 documentada por separado para diagnósticos detallados del servicio. El lanzamiento de la
 interfaz, la validación con una clave real, la interacción con el Llavero y la
 inferencia de pago del modelo requieren una comprobación interactiva de extremo a
-extremo y no se ejecutaron durante la verificación del código fuente. Ninguna
-remediación se ejecuta sin tu aprobación en el aviso de administrador de macOS.
+extremo y no se ejecutaron durante la verificación del código fuente. Las acciones de red
+requieren aprobación en el aviso de administrador de macOS; la respuesta de IA requiere
+la autorización por sesión descrita a continuación.
 
 ## Revisión manual de vigilancia
 
@@ -213,6 +215,21 @@ Salir debe detener el agente propio y conservar un agente iniciado externamente.
 Las pruebas de Claude usan proveedores simulados; una comprobación real genera cargos
 solo después de autorizarla. La automatización admite doce intentos en 24 horas y
 separa intentos por cinco minutos; reiniciar no restablece esos límites.
+
+## Protección guiada por IA
+
+En **Señales**, activa **Protección guiada por IA** para autorizar respuestas durante
+esta sesión del agente. No hay listas de reglas que mantener. La investigación automática
+y sus costes se autorizan aparte. Con vigilancia activa, tanto investigaciones automáticas
+como manuales pueden generar una respuesta si el veredicto es malicioso y cita un objetivo
+elegible. Los simples cambios de archivos o nuevas escuchas no demuestran malicia.
+
+La app muestra el historial real de acciones y permite restaurar cuarentenas sin sobrescribir
+archivos. SIGKILL puede perder trabajo sin guardar; la IA puede equivocarse. Solo se actúa
+sobre procesos propios y archivos vigilados elegibles dentro de la carpeta personal, después
+de revalidar identidad y hash. La protección empieza desactivada al reiniciar el agente y se
+limita a 20 intentos por sesión. Los bloqueos de red siguen pidiendo autorización de macOS;
+no se instala un servicio privilegiado ni se promete bloquear todos los ataques.
 
 ## Diagnóstico de investigaciones no concluyentes
 

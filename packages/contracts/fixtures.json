@@ -38,7 +38,12 @@
       "unacknowledged": 1,
       "pending": 1
     },
-    "last_file_scan": "2026-10-24T12:00:00+00:00"
+    "last_file_scan": "2026-10-24T12:00:00+00:00",
+    "protection": {
+      "enabled": false,
+      "remaining": 20,
+      "events": []
+    }
   },
   "observation": {
     "id": "1c7f0b5e-0000-4000-8000-000000000001",

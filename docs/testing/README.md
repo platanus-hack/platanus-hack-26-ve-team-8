@@ -2,11 +2,12 @@
 
 Arkangel es un **investigador defensivo** que observa procesos locales, escuchas TCP,
 el estado del firewall y metadatos de los LaunchAgents del usuario, y deja que un modelo
-investigue la evidencia registrada. Su única prevención es reducir la exposición de red
+investigue la evidencia registrada. Puede reducir la exposición de red
 con tu aprobación: bloquear conexiones entrantes nuevas a un puerto TCP desde otros
 dispositivos, o activar el firewall con modo sigiloso, siempre tras el aviso de
-administrador de macOS. No detiene procesos, no pone archivos en cuarentena ni detecta
-robo de datos por puertos que no bloquees. Si el requisito es “impedir que los agentes
+administrador de macOS. La protección de IA opcional también permite terminar procesos
+propios y poner archivos elegibles en cuarentena, tras autorización por sesión y
+revalidación local. No detecta robo de datos por puertos que no bloquees. Si el requisito es “impedir que los agentes
 de mi colega roben datos”, esta versión solo lo cubre para los puertos que bloquees.
 
 Use this guide to measure what works and expose missing protection. A quiet dashboard
@@ -71,6 +72,19 @@ Do not use CLI `status` to check a live service: CLI commands create a separate 
 object rather than querying its socket. Use the app for live monitoring state.
 
 ## 3. Repeatable fake-data exercise on this Mac
+
+To run the scenario below with automatic temporary-file cleanup on exit:
+
+```sh
+sh scripts/demo-suspicious-listener.sh
+```
+
+This deliberately exposes a fake secret to local clients only. It does not read real
+secrets or install anything. Stop it with Ctrl-C. Guardian should collect its TCP
+listener, but does not inspect the script or served file contents; a maliciousness
+finding is not guaranteed. Use the retrieval command and expected-results table
+below to check collection separately from investigation. Do not also start the
+manual server below while the script is running, since both use port 8765.
 
 In a second terminal, from the repository root, start a temporary server serving
 only a newly created directory. Do not serve the repository or your home directory:
@@ -173,3 +187,38 @@ need. Test databases contain host metadata. Do not remove your normal Guardian
 database or another running service's socket as part of cleanup.
 
 This procedure documents a test plan, not completed validation or a protection guarantee.
+
+## AI-guided response (development validation)
+
+The optional **Señales → Protección guiada por IA** switch authorizes automatic
+process termination and recoverable quarantine after a cited malicious verdict.
+Protection is off by default and has the bounded scope in the
+[protocol](../../packages/contracts/protocol.md#respuesta-guiada-por-ia-opcional).
+The localhost listener demo is not a malicious sample and should not be contained
+merely because it exists. Network actions still require macOS administrator approval.
+
+Run these checks manually; do not build the project:
+
+```sh
+PYTHONPATH=services/agent/src python3 -m unittest discover -s services/agent/tests -v
+swiftc -typecheck -parse-as-library -swift-version 6 \
+  -module-cache-path /tmp/guardian-swift-module-cache apps/macos/Sources/Guardian/*.swift
+```
+
+`test_response.py` uses disposable files and mocked process signals/model decisions.
+On macOS it also exercises exclusive quarantine/restore and reads the current process
+identity without signaling it. It checks consent, disabled protection, stale targets,
+invalid citations/verdicts, symlinks, protected paths, session limits, restoring without
+overwrite, and revocation while an investigation is in progress. These tests do not
+establish the accuracy of real model verdicts or successful real process termination.
+
+In a disposable test account, verify that the UI requires explicit consent, shows
+response history separately from model proposals, restores an inert quarantined fixture,
+refuses to overwrite an occupied original path, and starts disabled after an agent restart.
+Do not test AI-driven termination against everyday apps or unsaved work. Real model calls,
+privileged network changes, and destructive live tests require separate authorization.
+
+Recovery: completed quarantines can be restored from the UI. Interrupted moves are kept
+in the local response journal and `<data-dir>/quarantine/<event-id>/payload`; compare the
+original path and SHA-256 before manual recovery and never overwrite an existing file.
+There is no automatic undo for terminated processes or recovery of unsaved work.

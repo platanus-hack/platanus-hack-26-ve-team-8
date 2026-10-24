@@ -1,5 +1,6 @@
 """Servicio local solo en primer plano. Sin puerto de red ni registro como servicio del sistema."""
 
+import copy
 import json
 import os
 import socketserver
@@ -13,6 +14,7 @@ from .store import Store
 from .providers import provider_config
 from .diagnostics import logger
 from .onboarding import sdk_available, validate_key
+from .response import Response
 
 
 def default_socket() -> Path:
@@ -54,6 +56,8 @@ class GuardianService:
         # el Mac, así que status puede omitirlos (nunca inventarlos). Leer las anclas con root si hace falta.
         self.blocked = set()
         self.defense_lock = threading.Lock()
+        self.response_lock = threading.RLock()
+        self.response = Response(store)
 
     def status(self):
         with self.lock:
@@ -64,6 +68,7 @@ class GuardianService:
                 if provider.name == "anthropic" and os.getenv("GUARDIAN_ALLOW_CLOUD") != "1":
                     provider_status += " (nube desactivada)"
             return {"monitoring": self.monitoring, "automation": self.automation_status(),
+                    "protection": self.response.status(),
                     "alerts": self.store.alert_counts(), "last_file_scan": self.last_file_scan,
                     "provider": provider_status,
                     "onboarding_required": not provider.configured or (provider.name == "anthropic" and os.getenv("GUARDIAN_ALLOW_CLOUD") != "1"),
@@ -121,12 +126,19 @@ class GuardianService:
                     coverage.append({"source": "evidence_window", "status": "partial",
                                      "detail": "La ventana prioriza hasta 100 señales con sus estados anterior y posterior; el contexto adicional está limitado a 500 observaciones."})
                 self.progress = {"active": True, "started_at": datetime.now(timezone.utc).isoformat(), "steps": []}
+            observations = copy.deepcopy(observations)
+            with self.response_lock:
+                generation = self.response.generation
+                targets = self.response.capture(observations) if self.monitoring else {}
             result = self.investigator(observations, question=question, coverage=coverage,
                                        on_step=self.record_step)
             with self.lock:
                 self.store.save_investigation(result)
                 if result.get("status") != "inconclusive" or result.get("hypotheses"):
                     self.store.complete_alerts([alert["id"] for alert in alerts])
+            with self.response_lock:
+                if self.monitoring and generation == self.response.generation:
+                    self.response.apply(result, targets)
             return result
         finally:
             with self.lock:
@@ -166,6 +178,28 @@ class GuardianService:
             return self.status()
         if method == "status":
             return self.status()
+        if isinstance(method, str) and method.startswith("protection."):
+            with self.response_lock:
+                if method == "protection.set":
+                    enabled = params.get('enabled')
+                    if type(enabled) is not bool or (enabled and params.get('consent') is not True):
+                        raise ValueError('Confirma la respuesta automática y el riesgo de perder trabajo sin guardar.')
+                    if enabled and self.response.attempts >= 20:
+                        raise ValueError('Se alcanzó el límite de 20 intentos; revisa el historial antes de reiniciar el agente.')
+                    if enabled and os.getuid() == 0:
+                        raise ValueError('No se admite respuesta activa como root.')
+                    self.response.generation += 1
+                    self.response.enabled = enabled
+                elif method == "protection.restore":
+                    identifier = params.get('id')
+                    if not isinstance(identifier, str) or not 1 <= len(identifier) <= 100:
+                        raise ValueError('Identificador de respuesta no válido.')
+                    if params.get('consent') is not True:
+                        raise ValueError('Confirma la restauración del archivo.')
+                    self.response.restore(identifier)
+                else:
+                    raise ValueError('Método de protección desconocido.')
+            return self.status()
         if method == "provider.configure":
             return self.configure_provider(params)
         if method == "observations":
@@ -191,8 +225,10 @@ class GuardianService:
             enabled = params.get("enabled")
             if type(enabled) is not bool:
                 raise ValueError("enabled debe ser un booleano")
-            with self.lock:
-                self.monitoring = enabled
+            with self.response_lock:
+                with self.lock:
+                    self.monitoring = enabled
+                    self.response.generation += 1
             return self.status()
         raise ValueError("Método desconocido")
 

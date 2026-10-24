@@ -27,6 +27,33 @@ def final(evidence="real-id"):
 
 
 class InvestigationTests(unittest.TestCase):
+    def test_response_action_requires_eligible_inspected_cited_target_and_verdict(self):
+        for cloud in (False, True):
+            identifier = 'observation_1' if cloud else 'real-id'
+            env = dict(ENV)
+            if cloud:
+                env.update(GUARDIAN_MODEL_ENDPOINT='https://provider.example/v1/chat/completions', GUARDIAN_ALLOW_CLOUD='1')
+            for verdict, eligible in (('malicious', True), ('suspicious', True), ('malicious', False)):
+                observations = copy.deepcopy(OBS)
+                if eligible:
+                    observations[0]['attributes']['response_action'] = 'terminate_process'
+                output = final(identifier)
+                content = json.loads(output['choices'][0]['message']['content'])
+                content['proposed_actions'][0]['action'] = {
+                    'type': 'terminate_process', 'observation_id': identifier, 'verdict': verdict,
+                    'path': '/arbitrary/model/path', 'pid': 1,
+                }
+                output['choices'][0]['message']['content'] = json.dumps(content)
+                with self.subTest(cloud=cloud, verdict=verdict, eligible=eligible), \
+                        patch.dict(os.environ, env, clear=True), \
+                        patch('guardian.investigator._complete', side_effect=[tool('get_evidence', {'ids': [identifier]}), output]):
+                    result = investigate(observations)
+                action = result['proposed_actions'][0].get('action')
+                if eligible and verdict == 'malicious':
+                    self.assertEqual(action, {'type': 'terminate_process', 'observation_id': 'real-id', 'verdict': 'malicious'})
+                else:
+                    self.assertIsNone(action)
+
     @patch.dict(os.environ, {}, clear=True)
     def test_missing_provider_is_honest(self):
         with patch("guardian.investigator._complete") as complete:

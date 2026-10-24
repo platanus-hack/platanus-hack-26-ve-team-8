@@ -175,12 +175,15 @@ instrucciones de la app para macOS.
   que terminó o se limpió.
 - La salida del modelo está vinculada a evidencia, pero sigue pudiendo fallar. No se
   afirma protección frente a ataques desconocidos ni atacantes guiados por IA.
-- Las únicas acciones son bloquear o desbloquear el TCP entrante a un puerto (un ancla
+- Las acciones de red son bloquear o desbloquear el TCP entrante a un puerto (un ancla
   de pf bajo `com.apple/*`, que se borra al reiniciar) y activar el firewall de
   aplicaciones con modo sigiloso. Cada una requiere tu aprobación en el aviso de
   administrador de macOS; Claude solo puede proponerlas, y solo para puertos que se
-  observaron accesibles desde otros dispositivos. No se expone ninguna capacidad para
-  detener procesos, borrar archivos, permitir o abrir acceso, ni cambiar la persistencia.
+  observaron accesibles desde otros dispositivos. No se permite abrir acceso.
+- La protección de IA opcional puede forzar la terminación de procesos propios y poner
+  archivos elegibles en cuarentena recuperable. Requiere autorización por sesión,
+  un veredicto malicioso con evidencia citada y revalidación local del objetivo.
+  No es un antivirus ni prevención de ejecución; la IA puede equivocarse.
 - Solo se ven las escuchas del usuario actual: los servicios de root (por ejemplo SSH)
   no aparecen. Los bloqueos se guardan en memoria, así que tras reiniciar el servicio la
   app puede mostrar como desbloqueado un bloqueo que sigue activo hasta que lo bloquees
@@ -224,8 +227,8 @@ Una investigación inconclusa sin hipótesis queda pendiente para reintentar con
 La autorización para conectar Anthropic no activa la automatización. Su casilla
 separada autoriza llamadas de pago con metadatos minimizados: categorías, reglas,
 cambios de presencia y permisos. No se envían rutas, nombres privados, huellas ni
-contenido. El SDK mantiene sus herramientas acotadas y ninguna remediación se aplica
-sin aprobación individual de macOS.
+contenido. El SDK mantiene herramientas de solo lectura. La respuesta de IA se autoriza
+aparte por sesión; las acciones de red siguen requiriendo aprobación individual de macOS.
 
 Al activar la vigilancia se pide permiso para notificaciones genéricas de señales
 nuevas. Si se deniega, el indicador de la barra de menús y la pantalla de señales

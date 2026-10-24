@@ -40,6 +40,16 @@ seguridad. Una propuesta puede llevar una action que el usuario puede aprobar:
 (otros dispositivos pueden alcanzarlo), o {"type":"enable_firewall"} cuando el
 firewall o el modo sigiloso estén desactivados. Nada se ejecuta sin la aprobación del
 usuario.
+Si una observación incluye response_action, puede ser un objetivo de respuesta local.
+Solo con evidencia concreta de actividad maliciosa, una hipótesis que cite esa misma
+observación y status needs_review, puedes proponer
+{"type":"terminate_process","observation_id":"ID","verdict":"malicious"},
+o type "quarantine_file". El type debe coincidir con response_action. No incluyas rutas, PID ni comandos
+en estas acciones. Un cambio de archivo, una escucha, persistencia o falta de contexto
+por sí solos NO demuestran actividad maliciosa: abstente si no puedes descartar explicaciones
+benignas. La evidencia minimizada puede ser insuficiente. Estas propuestas pueden provocar
+terminación forzada o cuarentena automática si el usuario activó la protección de IA.
+Nunca afirmes que una propuesta se aplicó: el servicio valida y registra el resultado aparte.
 """
 
 
@@ -109,6 +119,9 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
         logger.info("Investigación detenida: falta consentimiento de nube o HTTPS.")
         return _result("El proveedor en la nube requiere GUARDIAN_ALLOW_CLOUD=1 y HTTPS.")
     records = copy.deepcopy(observations[:MAX_OBSERVATIONS])
+    response_targets = {o['id']: o['attributes']['response_action'] for o in records
+                        if o.get('attributes', {}).get('response_action') in {'terminate_process', 'quarantine_file'}}
+    response_evidence = set()
     # Puertos que otros dispositivos pueden alcanzar; los únicos que puede nombrar una propuesta block_port.
     exposed_ports = {o["attributes"].get("port") for o in records
                      if o.get("kind") == "tcp_listener" and isinstance(o.get("attributes"), dict)
@@ -142,6 +155,7 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
                 "change": {"created", "modified", "deleted"},
                 "rule": {"file_changed", "firewall_weakened", "listener_exposed"},
                 "file_type": {"regular", "symlink", "other"},
+                "response_action": {"terminate_process", "quarantine_file"},
             }.items():
                 value = attributes.get(field)
                 if isinstance(value, str) and value in values:
@@ -189,6 +203,15 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
     def defense_action(raw):
         if not isinstance(raw, dict):
             return None
+        if raw.get('type') in {'terminate_process', 'quarantine_file'}:
+            identifier = raw.get('observation_id')
+            if not isinstance(identifier, str) or identifier not in seen_ids:
+                return None
+            original = mapping.get(identifier, identifier)
+            if raw.get('verdict') == 'malicious' and original in response_evidence and \
+                    response_targets.get(original) == raw['type']:
+                return {'type': raw['type'], 'observation_id': original, 'verdict': 'malicious'}
+            return None
         if raw.get("type") == "enable_firewall":
             return {"type": "enable_firewall"}
         port = raw.get("port")
@@ -224,6 +247,8 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
         limitations = final.get("limitations", [])
         if not isinstance(actions, list) or not isinstance(limitations, list):
             raise ValueError("Esquema de salida no válido")
+        if final['status'] == 'needs_review':
+            response_evidence.update(i for hypothesis in clean for i in hypothesis['evidence_ids'])
         result.update(status=final["status"], title=_text(final.get("title", "Investigación"), 200),
                       summary=_text(final.get("summary", "")), hypotheses=clean,
                       proposed_actions=[proposal(a) for a in actions[:10] if isinstance(a, dict)],

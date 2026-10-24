@@ -33,7 +33,7 @@ const features = [
   },
   {
     title: 'Herramientas acotadas',
-    body: 'El modelo solo recibe herramientas de evidencia de solo lectura. Sin shell arbitraria, lecturas libres del disco ni remediación automática.',
+    body: 'El modelo consulta evidencia de solo lectura. Con autorización de sesión, un veredicto malicioso puede detener procesos propios o poner archivos elegibles en cuarentena recuperable. Sin shell arbitraria; los cambios de red requieren aprobación de macOS.',
   },
   {
     title: 'Claves en el Llavero',

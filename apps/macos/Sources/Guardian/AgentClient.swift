@@ -8,6 +8,7 @@ struct Coverage: Decodable, Identifiable, Sendable {
     let detail: String
 }
 struct AgentStatus: Decodable, Sendable {
+    let protection: ProtectionState?
     let automation: AutomationState?
     let alerts: AlertCounts?
     let last_file_scan: String?
@@ -21,6 +22,19 @@ struct AgentStatus: Decodable, Sendable {
     let firewall: FirewallState?
     let exposed: [ExposedPort]?
     let blocked_ports: [Int]?
+}
+struct ProtectionState: Decodable, Sendable {
+    let enabled: Bool
+    let remaining: Int
+    let events: [ResponseEvent]
+}
+struct ResponseEvent: Decodable, Identifiable, Sendable {
+    let id: String
+    let action: String
+    let path: String
+    let status: String
+    let detail: String
+    let created_at: String
 }
 struct AutomationState: Decodable, Sendable {
     let enabled: Bool
@@ -56,6 +70,8 @@ struct ExposedPort: Decodable, Identifiable, Sendable {
 struct DefenseAction: Decodable, Sendable {
     let type: String
     let port: Int?
+    let observation_id: String?
+    let verdict: String?
 }
 enum JSONValue: Decodable, Sendable {
     case string(String), number(Double), boolean(Bool), object([String: JSONValue]), array([JSONValue]), null
@@ -144,6 +160,9 @@ struct AgentClient: Sendable {
     let path = ProcessInfo.processInfo.environment["GUARDIAN_SOCKET"] ?? "/tmp/guardian-\(getuid())/agent.sock"
 
     func status() async throws -> AgentStatus { try await request("status") }
+    func protection(_ operation: String, params: [String: any Sendable]) async throws -> AgentStatus {
+        try await request("protection." + operation, params: params)
+    }
     func configure(_ key: String) async throws -> AgentStatus {
         try await request("provider.configure", params: ["api_key": key, "allow_cloud": true])
     }
@@ -195,6 +214,7 @@ struct AgentClient: Sendable {
             case "investigate": 120
             case "defense.apply": 150
             case "scan": 60
+            case "protection.restore", "protection.set": 60
             case "provider.configure": 30
             default: 10
             }

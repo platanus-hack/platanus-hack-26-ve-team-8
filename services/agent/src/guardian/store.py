@@ -6,6 +6,7 @@ import json
 import sqlite3
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -15,6 +16,7 @@ class Store:
         self.path = path
         with self.connect() as db:
             db.executescript("""
+                CREATE TABLE IF NOT EXISTS response_events (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS watch_state (
                     entity_key TEXT PRIMARY KEY, payload TEXT NOT NULL
                 );
@@ -46,6 +48,42 @@ class Store:
 
     def connect(self):
         return sqlite3.connect(self.path)
+
+    def response_events(self):
+        with self.connect() as db:
+            return [json.loads(r[0]) for r in db.execute("""
+                SELECT payload FROM response_events
+                WHERE json_extract(payload, '$.status') NOT IN ('restored', 'failed', 'termination_requested')
+                   OR rowid IN (SELECT rowid FROM response_events ORDER BY rowid DESC LIMIT 100)
+                ORDER BY rowid DESC
+            """)]
+
+    def unresolved_responses(self):
+        with self.connect() as db:
+            return db.execute("SELECT COUNT(*) FROM response_events WHERE json_extract(payload, '$.status') "
+                              "NOT IN ('restored', 'failed', 'termination_requested')").fetchone()[0]
+
+    def response_event(self, identifier):
+        with self.connect() as db:
+            row = db.execute("SELECT payload FROM response_events WHERE id=?", (identifier,)).fetchone()
+        if row is None:
+            raise ValueError('Acción no encontrada.')
+        return json.loads(row[0])
+
+    def start_response(self, target, **details):
+        identifier = str(uuid.uuid4())
+        event = dict(target, id=identifier, observation_id=target['id'], status='pending',
+                     created_at=datetime.now(timezone.utc).isoformat(),
+                     detail='Acción iniciada; un reinicio puede requerir recuperación manual.', **details)
+        with self.connect() as db:
+            db.execute("INSERT INTO response_events VALUES (?, ?)", (identifier, json.dumps(event)))
+        return identifier
+
+    def finish_response(self, identifier, status, detail):
+        with self.connect() as db:
+            event = json.loads(db.execute("SELECT payload FROM response_events WHERE id=?", (identifier,)).fetchone()[0])
+            event.update(status=status, detail=detail)
+            db.execute("UPDATE response_events SET payload=? WHERE id=?", (json.dumps(event), identifier))
 
     def ingest(self, observations: list[dict]) -> int:
         added = 0

@@ -681,6 +681,7 @@ struct Dashboard: View {
                     metric("Por investigar", (status.alerts?.pending ?? 0).formatted())
                 }
                 if let automation = status.automation { signalAutomation(automation) }
+                if let protection = status.protection { ProtectionView(model: model, protection: protection) }
                 signalCoverage(status)
             }
             VStack(alignment: .leading, spacing: 16) {
@@ -1057,9 +1058,12 @@ struct ProposalStatus: View {
     @Bindable var model: GuardianModel
     var body: some View {
         if let defense = action.action {
-            if defense.type == "block_port", let port = defense.port, model.status?.blocked_ports?.contains(port) == true {
+            if defense.type == "terminate_process" || defense.type == "quarantine_file" {
+                Text("Respuesta de IA: consulta el resultado en Señales → Historial de respuesta.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if defense.type == "block_port", let port = defense.port, model.status?.blocked_ports?.contains(port) == true {
                 Pill("Aplicada", .success)
-            } else {
+            } else if defense.type == "block_port" || defense.type == "enable_firewall" {
                 Button(defense.type == "block_port" ? "Bloquear puerto \(defense.port ?? 0)" : "Activar firewall") {
                     Task { await model.defend(defense.type, port: defense.port) }
                 }
