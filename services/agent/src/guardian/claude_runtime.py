@@ -11,6 +11,30 @@ import json
 import tempfile
 
 
+FAILURES = {
+    "authentication_failed": "Anthropic rechazó la clave. Vuelve a configurar el proveedor con una clave válida en este Mac.",
+    "billing_error": "Anthropic rechazó la solicitud por facturación. Revisa el saldo y los límites de gasto de la cuenta de API.",
+    "rate_limit": "Anthropic limitó las solicitudes. Espera un momento y vuelve a intentarlo.",
+    "model_not_found": "El modelo configurado no está disponible para esta clave de API.",
+    "invalid_request": "Anthropic rechazó la solicitud. Revisa el modelo y los permisos de la cuenta de API.",
+    "server_error": "Anthropic no está disponible temporalmente. Inténtalo más tarde.",
+    "connection_error": "No se pudo completar la conexión de Claude. Revisa la red, el proxy y los certificados de este Mac.",
+    "timeout": "La investigación agotó el tiempo disponible. Revisa la conexión y vuelve a intentarlo.",
+    "sdk_missing": "Falta Claude Agent SDK. Reinstala Arkangel.",
+    "cli_unavailable": "No se pudo iniciar el runtime de Claude incluido. Reinstala Arkangel y revisa los registros de macOS.",
+    "turn_limit": "Claude agotó el límite de turnos sin completar la investigación.",
+    "budget": "Claude superó el límite de respuesta o una herramienta rechazó la solicitud.",
+    "invalid_output": "Claude no devolvió una investigación estructurada válida.",
+    "runtime_error": "El runtime de Claude falló. Revisa la conexión y los registros de diagnóstico; si persiste, reinstala Arkangel.",
+}
+
+
+class ClaudeFailure(ValueError):
+    def __init__(self, code):
+        self.code = code if isinstance(code, str) and code in FAILURES else "runtime_error"
+        super().__init__(f"{FAILURES[self.code]} [{self.code}]")
+
+
 def sdk_available() -> bool:
     return importlib.util.find_spec("claude_agent_sdk") is not None
 
@@ -44,7 +68,7 @@ INVESTIGATION_SCHEMA = {
 async def _run(*, model, key, system_prompt, prompt, tools, execute_tool,
                max_turns, timeout, max_response_bytes):
     from claude_agent_sdk import (ClaudeAgentOptions, ClaudeSDKClient, PermissionResultAllow,
-                                 PermissionResultDeny, ResultMessage, create_sdk_mcp_server, tool)
+                                 PermissionResultDeny, AssistantMessage, ResultMessage, create_sdk_mcp_server, tool)
 
     registered = []
     allowed = set()
@@ -99,23 +123,44 @@ async def _run(*, model, key, system_prompt, prompt, tools, execute_tool,
                 async for message in client.receive_response():
                     received_bytes += len(repr(message).encode())
                     if received_bytes > max_response_bytes or callback_failed:
-                        raise ValueError("Se superó el presupuesto de respuesta o de herramientas de Claude")
+                        raise ClaudeFailure("budget")
+                    if isinstance(message, AssistantMessage) and message.error:
+                        raise ClaudeFailure(message.error)
                     if isinstance(message, ResultMessage):
                         if message.is_error or message.subtype != "success":
-                            raise ValueError("La investigación de Claude no se completó")
+                            status = getattr(message, "api_error_status", None)
+                            code = {401: "authentication_failed", 403: "authentication_failed",
+                                    402: "billing_error", 404: "model_not_found", 429: "rate_limit",
+                                    500: "server_error", 503: "server_error", 529: "server_error"}.get(status, "runtime_error")
+                            if message.subtype == "error_max_turns":
+                                code = "turn_limit"
+                            raise ClaudeFailure(code)
                         final = getattr(message, "structured_output", None)
                         if final is None:
                             final = json.loads(message.result or "")
                         if not isinstance(final, dict):
-                            raise ValueError("Investigación estructurada no válida")
+                            raise ClaudeFailure("invalid_output")
                         return final
-    raise ValueError("Claude no devolvió un resultado estructurado")
+    raise ClaudeFailure("invalid_output")
 
 
 def run_claude(**kwargs) -> dict:
     try:
         return asyncio.run(_run(**kwargs))
-    except Exception:
-        # Los errores del SDK pueden incluir salida del subproceso. Devuelve solo un error
-        # local fijo; ni los registros ni la investigación incluyen ese contenido.
-        raise ValueError("Claude Agent SDK no disponible o la investigación falló") from None
+    except ClaudeFailure:
+        raise
+    except Exception as error:
+        # Never forward SDK exception text, stderr, transcripts, or provider bodies.
+        if isinstance(error, ImportError):
+            code = "sdk_missing"
+        elif isinstance(error, TimeoutError):
+            code = "timeout"
+        elif isinstance(error, json.JSONDecodeError):
+            code = "invalid_output"
+        elif type(error).__name__ in {"CLINotFoundError", "CLIConnectionError", "ProcessError"} or isinstance(error, (FileNotFoundError, PermissionError)):
+            code = "cli_unavailable"
+        elif isinstance(error, OSError):
+            code = "connection_error"
+        else:
+            code = "runtime_error"
+        raise ClaudeFailure(code) from None

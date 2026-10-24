@@ -106,12 +106,10 @@ final class GuardianModel {
             guard current.sdk_available != false else {
                 throw ClientError(message: "La instalación del agente está incompleta. Reinstala Arkangel; si usas el entorno de desarrollo, vuelve a prepararlo.")
             }
-            let configuredStatus: AgentStatus
-            if restoring && current.onboarding_required == false {
-                configuredStatus = current
-            } else {
-                configuredStatus = try await client.configure(key)
-            }
+            // An already-running agent may hold a different key than this Mac's Keychain.
+            diagnosticLogger.info("Enviando la clave al agente; restauración=\(restoring, privacy: .public)")
+            let configuredStatus = try await client.configure(key)
+            diagnosticLogger.info("Proveedor configurado en el agente.")
             if !restoring {
                 setupVisible = true
                 try ProviderKeychain.save(key)
@@ -356,6 +354,19 @@ struct GuardianMenu: View {
         Button("Configurar proveedor…") {
             model.setupVisible = true
             openDashboard()
+        }
+        Button("Abrir registros de diagnóstico…") {
+            let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Arkangel")
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                if !NSWorkspace.shared.open(directory) {
+                    model.error = "No se pudo abrir la carpeta de registros de diagnóstico."
+                    openDashboard()
+                }
+            } catch {
+                model.error = "No se pudo abrir la carpeta de registros de diagnóstico."
+                openDashboard()
+            }
         }
         Button("Actualizar estado") { Task { await model.refresh() } }
             .disabled(model.busy)

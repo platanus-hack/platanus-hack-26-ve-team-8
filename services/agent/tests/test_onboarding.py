@@ -53,6 +53,11 @@ class OnboardingTests(unittest.TestCase):
                 self.service.configure_provider({"api_key": "fake-test-key", "allow_cloud": True})
         validate.assert_not_called()
 
+    def test_missing_tls_dependency_has_actionable_private_error(self):
+        with patch.dict("sys.modules", {"truststore": None}):
+            with self.assertRaisesRegex(ValueError, "componente TLS"):
+                validate_key("fake-test-key")
+
     @patch("guardian.onboarding.urllib.request.build_opener")
     def test_verification_is_metadata_get_not_paid_inference(self, opener):
         response = io.BytesIO(json.dumps({"type": "model", "id": "claude-haiku-5-5"}).encode())

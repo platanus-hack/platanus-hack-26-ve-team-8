@@ -1,6 +1,9 @@
 import AppKit
 import Security
+import OSLog
 import UserNotifications
+
+let diagnosticLogger = Logger(subsystem: "local.guardian.app", category: "diagnostics")
 
 struct ProviderKeychain {
     private static var query: [String: Any] {
@@ -15,6 +18,7 @@ struct ProviderKeychain {
         lookup[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(lookup as CFDictionary, &result)
+        diagnosticLogger.info("Lectura del Llavero; estado=\(status, privacy: .public)")
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let data = result as? Data,
               let key = String(data: data, encoding: .utf8) else {
@@ -26,6 +30,7 @@ struct ProviderKeychain {
     static func save(_ key: String) throws {
         let data = Data(key.utf8)
         let updated = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        diagnosticLogger.info("Actualización del Llavero; estado=\(updated, privacy: .public)")
         if updated == errSecSuccess { return }
         guard updated == errSecItemNotFound else {
             throw ClientError(message: "Proveedor conectado, pero el Llavero de macOS no pudo guardar la clave. Repite la configuración.")
@@ -33,7 +38,9 @@ struct ProviderKeychain {
         var item = query
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else {
+        let added = SecItemAdd(item as CFDictionary, nil)
+        diagnosticLogger.info("Guardado del Llavero; estado=\(added, privacy: .public)")
+        guard added == errSecSuccess else {
             throw ClientError(message: "Proveedor conectado, pero el Llavero de macOS no pudo guardar la clave. Repite la configuración.")
         }
     }
@@ -64,7 +71,9 @@ final class LocalRuntime {
                 .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             python = root.appendingPathComponent(".venv/bin/python")
         }
+        diagnosticLogger.info("Inicio del agente; incluido=\(bundled, privacy: .public)")
         guard FileManager.default.isExecutableFile(atPath: python.path) else {
+            diagnosticLogger.error("No se encontró un Python ejecutable para el agente.")
             throw ClientError(message: bundled
                 ? "La instalación de Arkangel está incompleta. Reinstala la app para recuperar el agente incluido."
                 : "Falta el entorno de desarrollo. Ejecuta bash scripts/setup-agent.sh desde el repositorio o usa la app instalada.")
@@ -83,9 +92,14 @@ final class LocalRuntime {
         child.standardOutput = FileHandle.nullDevice
         child.standardError = FileHandle.nullDevice
         child.standardInput = FileHandle.nullDevice
+        child.terminationHandler = { terminated in
+            diagnosticLogger.notice("Agente terminado; estado=\(terminated.terminationStatus, privacy: .public)")
+        }
         do { try child.run() } catch {
+            diagnosticLogger.error("No se pudo iniciar el proceso del agente.")
             throw ClientError(message: "No se pudo iniciar el agente de Arkangel. Reinicia la app; si el problema continúa, reinstálala.")
         }
+        diagnosticLogger.info("Agente iniciado; pid=\(child.processIdentifier, privacy: .public)")
         process = child
     }
 

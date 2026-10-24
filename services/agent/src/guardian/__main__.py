@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .service import GuardianService, default_socket, serve
 from .store import Store
+from .diagnostics import configure_logging
 
 
 def main():
@@ -16,6 +17,7 @@ def main():
     parser.add_argument("--auto-investigate", action="store_true", help="Autoriza investigaciones automáticas de pago: una cada cinco minutos y doce intentos en 24 horas")
     parser.add_argument("--question", default="", help="Pregunta opcional para la investigación")
     args = parser.parse_args()
+    configure_logging()
     service = GuardianService(Store(args.data_dir / "guardian.sqlite3"))
     if args.command == "serve":
         service.monitoring = args.watch

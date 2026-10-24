@@ -11,6 +11,7 @@ from pathlib import Path
 from . import defense
 from .store import Store
 from .providers import provider_config
+from .diagnostics import logger
 from .onboarding import sdk_available, validate_key
 
 
@@ -226,7 +227,13 @@ class GuardianService:
             raise ValueError("Espera a que termine la investigación actual antes de cambiar la clave de API.")
         try:
             key = params.get("api_key")
-            validate_key(key)
+            logger.info("Configuración del proveedor: verificando clave recibida por el socket local.")
+            try:
+                validate_key(key)
+            except ValueError:
+                logger.info("Configuración del proveedor: verificación rechazada; se conserva la configuración anterior.")
+                raise
+            logger.info("Configuración del proveedor: clave verificada; se guarda solo en memoria.")
             with self.lock:
                 # Solo el proceso del servicio retiene la credencial. La app nativa gestiona la persistencia en el Llavero.
                 os.environ["ANTHROPIC_API_KEY"] = key

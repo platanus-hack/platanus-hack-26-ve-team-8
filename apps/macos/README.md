@@ -198,3 +198,28 @@ Salir debe detener el agente propio y conservar un agente iniciado externamente.
 Las pruebas de Claude usan proveedores simulados; una comprobación real genera cargos
 solo después de autorizarla. La automatización admite doce intentos en 24 horas y
 separa intentos por cinco minutos; reiniciar no restablece esos límites.
+
+## Diagnóstico de investigaciones no concluyentes
+
+Cada Mac necesita configurar su propia clave de API. La app la guarda en el Llavero
+con acceso limitado a ese dispositivo; copiar la app no copia la clave. Al restaurar
+la conexión, la app vuelve a verificar y enviar la clave guardada al agente, aunque
+este ya tenga otra configuración en memoria. Esta verificación consulta metadatos;
+no realiza inferencia de pago ni garantiza saldo suficiente para investigar.
+
+En el menú de Arkangel, selecciona **Abrir registros de diagnóstico…**. El archivo
+`~/Library/Logs/Arkangel/agent.log` registra la configuración del proveedor y los
+resultados de investigación. Rota a 512 KB y conserva dos copias anteriores. No
+incluye claves, preguntas, evidencia, transcripciones, cuerpos de error ni stderr
+del SDK. Los eventos del Llavero y del inicio/cierre del agente están en **Consola**
+de macOS, filtrando por el subsistema `local.guardian.app` y la categoría
+`diagnostics` (activa los mensajes informativos antes de reproducir el problema).
+
+Reproduce el fallo y consulta el resumen completo de la investigación. Los códigos
+`authentication_failed`, `billing_error`, `rate_limit`, `model_not_found`, `timeout`,
+`cli_unavailable` y `sdk_missing` distinguen problemas de credenciales, facturación,
+límites, acceso al modelo, tiempo de espera e instalación. `runtime_error` conserva
+la privacidad cuando el SDK no entrega un código estructurado conocido. Una
+investigación completada también puede ser no concluyente por falta de evidencia.
+Comparte el código, la hora del fallo, la versión de la app y el registro local;
+nunca compartas tu clave de API.

@@ -5,6 +5,7 @@ import ssl
 import urllib.error
 import urllib.request
 from .claude_runtime import sdk_available
+from .diagnostics import logger
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -31,6 +32,7 @@ def validate_key(key: str):
         if model.get("type") != "model" or not str(model.get("id", "")).startswith("claude-haiku-5-5"):
             raise ValueError("Respuesta de verificación inesperada")
     except urllib.error.HTTPError as error:
+        logger.info("Verificación de Anthropic rechazada; HTTP=%d", error.code)
         if error.code in (401, 403):
             raise ValueError("Anthropic rechazó esta clave. Revisa la clave y los permisos de su espacio de trabajo.") from None
         if error.code == 404:
@@ -38,5 +40,9 @@ def validate_key(key: str):
         if error.code == 429:
             raise ValueError("Anthropic está limitando la frecuencia de solicitudes. Inténtalo de nuevo en breve.") from None
         raise ValueError("Anthropic no pudo verificar la clave. Inténtalo más tarde.") from None
+    except ImportError:
+        logger.info("Verificación de Anthropic fallida: falta el componente TLS truststore.")
+        raise ValueError("La instalación está incompleta: falta el componente TLS. Reinstala Arkangel.") from None
     except (OSError, ValueError, TypeError, AttributeError):
+        logger.info("Verificación de Anthropic fallida: conexión, TLS o respuesta no válida.")
         raise ValueError("No se pudo verificar la clave con Anthropic. Revisa tu conexión e inténtalo de nuevo.") from None

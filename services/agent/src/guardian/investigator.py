@@ -11,7 +11,8 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 from .providers import provider_config
-from .claude_runtime import run_claude
+from .claude_runtime import ClaudeFailure, run_claude
+from .diagnostics import logger
 
 MAX_ROUNDS = 6
 MAX_TOOL_CALLS = 16
@@ -91,16 +92,21 @@ def _result(reason: str) -> dict:
 
 def investigate(observations: list[dict], question: str = "", coverage: list[dict] | None = None,
                 on_step=None) -> dict:
-    result = _result("Proveedor de modelo no disponible: define ANTHROPIC_API_KEY o configura un endpoint y un modelo compatibles con OpenAI.")
+    result = _result("Proveedor de modelo no disponible: configura tu clave de API en este Mac desde Configurar proveedor. En el servicio independiente, define ANTHROPIC_API_KEY o un endpoint y un modelo compatibles con OpenAI.")
     provider = provider_config()
     endpoint, model = provider.endpoint, provider.model
+    logger.info("Investigación iniciada; clave_presente=%s nube_autorizada=%s", bool(provider.key),
+                os.environ.get("GUARDIAN_ALLOW_CLOUD") == "1")
     if not provider.configured:
+        logger.info("Investigación detenida: proveedor no configurado.")
         return result
     parsed = urllib.parse.urlsplit(endpoint)
     local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
     if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        logger.info("Investigación detenida: endpoint no válido.")
         return _result("Configuración del endpoint del modelo no válida.")
     if not local and (os.environ.get("GUARDIAN_ALLOW_CLOUD") != "1" or parsed.scheme != "https"):
+        logger.info("Investigación detenida: falta consentimiento de nube o HTTPS.")
         return _result("El proveedor en la nube requiere GUARDIAN_ALLOW_CLOUD=1 y HTTPS.")
     records = copy.deepcopy(observations[:MAX_OBSERVATIONS])
     # Puertos que otros dispositivos pueden alcanzar; los únicos que puede nombrar una propuesta block_port.
@@ -233,6 +239,7 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
         if len(observations) > MAX_OBSERVATIONS:
             result["limitations"].append("Instantánea de observaciones truncada a 500 registros.")
         result["steps"] = steps
+        logger.info("Investigación completada; estado=%s herramientas=%d", result["status"], calls)
         return result
 
     def execute_tool(name, args):
@@ -311,7 +318,13 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
                 data = execute_tool(name, args)
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(data)})
         raise ValueError("Se agotó el presupuesto de rondas del modelo")
+    except ClaudeFailure as error:
+        logger.info("Investigación fallida; código=%s herramientas=%d", error.code, calls)
+        result = _result(str(error))
+        result["steps"] = steps
+        return result
     except (ValueError, KeyError, TypeError, IndexError, AttributeError, OSError, urllib.error.URLError):
+        logger.info("Investigación fallida: proveedor, presupuesto o validación de evidencia; herramientas=%d", calls)
         # Los errores del proveedor pueden contener secretos o contenido privado; nunca se repiten.
         result = _result("Investigación del modelo no disponible o no válida: falló el proveedor, el presupuesto o la validación de evidencia.")
         result["steps"] = steps

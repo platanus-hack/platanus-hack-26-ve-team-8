@@ -6,7 +6,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from guardian.claude_runtime import INVESTIGATION_SCHEMA, sdk_available, run_claude
+from guardian.claude_runtime import INVESTIGATION_SCHEMA, ClaudeFailure, sdk_available, run_claude
 from guardian.investigator import TOOLS, investigate
 from guardian.providers import provider_config
 from test_investigator import OBS, final
@@ -28,7 +28,12 @@ class FakeResult:
         self.result = None
 
 
-def fake_sdk(callback_plan=None, output=None, failure=None):
+class FakeAssistant:
+    def __init__(self, error):
+        self.error = error
+
+
+def fake_sdk(callback_plan=None, output=None, failure=None, messages=None):
     module = types.ModuleType("claude_agent_sdk")
     captured = {"payloads": [], "prompts": [], "options": None}
     output = output if output is not None else json.loads(final("observation_1")["choices"][0]["message"]["content"])
@@ -55,12 +60,17 @@ def fake_sdk(callback_plan=None, output=None, failure=None):
             for name, arguments in plan:
                 response = await tools[name].handler(arguments)
                 captured["payloads"].append(copy.deepcopy(response))
-            yield FakeResult(output)
+            if messages is not None:
+                for message in messages:
+                    yield message
+            else:
+                yield FakeResult(output)
 
     module.ClaudeAgentOptions = FakeOptions
     module.ClaudeSDKClient = Client
     module.PermissionResultAllow = lambda: types.SimpleNamespace(behavior="allow")
     module.PermissionResultDeny = lambda **kwargs: types.SimpleNamespace(behavior="deny", **kwargs)
+    module.AssistantMessage = FakeAssistant
     module.ResultMessage = FakeResult
     module.tool = tool
     module.create_sdk_mcp_server = lambda **kwargs: kwargs
@@ -145,6 +155,44 @@ class AnthropicTests(unittest.TestCase):
             self.assertEqual(result["status"], "inconclusive")
             self.assertNotIn("SECRET", json.dumps(result))
             self.assertNotIn("test-key", json.dumps(result))
+
+    @patch.dict(os.environ, ENV, clear=True)
+    def test_structured_failures_reach_ui_and_logs_without_private_content(self):
+        for code in ("authentication_failed", "billing_error", "rate_limit", "model_not_found", "PRIVATE test-key"):
+            sdk, _ = fake_sdk(callback_plan=[], messages=[FakeAssistant(code)])
+            with self.subTest(code=code), patch.dict("sys.modules", {"claude_agent_sdk": sdk}), self.assertLogs("guardian.diagnostics", level="INFO") as logs:
+                result = investigate(OBS, "PRIVATE QUESTION")
+            expected = "runtime_error" if code.startswith("PRIVATE") else code
+            self.assertIn(f"[{expected}]", result["summary"])
+            self.assertIn(expected, " ".join(logs.output))
+            for private in ("PRIVATE", "test-key", "/Users/private", "PASSWORD"):
+                self.assertNotIn(private, json.dumps(result) + " ".join(logs.output))
+
+    @patch.dict(os.environ, ENV, clear=True)
+    def test_result_http_status_and_turn_limit(self):
+        for status, subtype, expected in ((401, "success", "authentication_failed"),
+                                          (402, "success", "billing_error"),
+                                          (None, "error_max_turns", "turn_limit")):
+            message = FakeResult(None, error=True, subtype=subtype)
+            message.api_error_status = status
+            message.result = "PRIVATE test-key-never-real"
+            sdk, _ = fake_sdk(callback_plan=[], messages=[message])
+            with self.subTest(status=status), patch.dict("sys.modules", {"claude_agent_sdk": sdk}):
+                result = investigate(OBS)
+            self.assertIn(f"[{expected}]", result["summary"])
+            self.assertNotIn("PRIVATE", json.dumps(result))
+
+    def test_runtime_exception_classification(self):
+        for failure, code in ((TimeoutError("SECRET"), "timeout"),
+                              (ImportError("SECRET"), "sdk_missing"),
+                              (FileNotFoundError("SECRET"), "cli_unavailable"),
+                              (OSError("SECRET"), "connection_error"),
+                              (RuntimeError("SECRET"), "runtime_error")):
+            with self.subTest(code=code), patch("guardian.claude_runtime._run", side_effect=failure):
+                with self.assertRaises(ClaudeFailure) as caught:
+                    run_claude()
+            self.assertEqual(caught.exception.code, code)
+            self.assertNotIn("SECRET", str(caught.exception))
 
     def test_availability_helper(self):
         with patch("guardian.claude_runtime.importlib.util.find_spec", return_value=None):
