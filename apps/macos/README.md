@@ -120,6 +120,10 @@ Repite con eliminación, enlace simbólico y archivo mayor de 1 MiB; revisa la c
 
 Comprueba que cerrar la ventana mantiene las revisiones y que una notificación vuelve
 a abrir **Señales**. Repite denegando notificaciones y revisa el contador de la barra.
+Con otra app en primer plano, pulsa **Abrir Arkangel** y comprueba que el panel aparece
+delante. Repite después de cerrar el panel y después de minimizarlo. Comprueba también
+**Configurar proveedor…** y **Revisar señales**: deben mostrar su contenido en el mismo
+panel, sin crear ventanas adicionales, incluso si el agente está desconectado.
 Salir debe detener el agente propio y conservar un agente iniciado externamente.
 Las pruebas de Claude usan proveedores simulados; una comprobación real genera cargos
 solo después de autorizarla. La automatización admite doce intentos en 24 horas y

@@ -318,20 +318,27 @@ struct GuardianApp: App {
     @NSApplicationDelegateAdaptor(GuardianAppDelegate.self) private var appDelegate
     private var model: GuardianModel { appDelegate.model }
     var body: some Scene {
-        WindowGroup("Arkangel", id: "dashboard") {
+        Window("Arkangel", id: "dashboard") {
             Dashboard(model: model)
                 .frame(minWidth: 860, minHeight: 620)
         }
         .defaultSize(width: 1120, height: 760)
         MenuBarExtra("Arkangel", systemImage: (model.status?.alerts?.unacknowledged ?? 0) > 0 ? "exclamationmark.shield" : model.status == nil ? "shield.slash" : "shield.lefthalf.filled") {
-            GuardianMenu(model: model)
+            GuardianMenu(model: model, showDashboard: appDelegate.showDashboard)
         }
     }
 }
 
 struct GuardianMenu: View {
     @Bindable var model: GuardianModel
+    let showDashboard: () -> Void
     @Environment(\.openWindow) private var openWindow
+
+    private func openDashboard() {
+        openWindow(id: "dashboard")
+        showDashboard()
+    }
+
     var body: some View {
         Text(model.status == nil ? "Agente desconectado" : "Arkangel · Agente conectado")
         if let status = model.status {
@@ -340,11 +347,11 @@ struct GuardianMenu: View {
             Text("\(status.alerts?.unacknowledged ?? 0) señales sin revisar")
         }
         Divider()
-        Button("Abrir Arkangel") { openWindow(id: "dashboard") }
-        Button("Revisar señales") { model.showAlerts = true; openWindow(id: "dashboard") }
+        Button("Abrir Arkangel") { openDashboard() }
+        Button("Revisar señales") { model.showAlerts = true; openDashboard() }
         Button("Configurar proveedor…") {
             model.setupVisible = true
-            openWindow(id: "dashboard")
+            openDashboard()
         }
         Button("Actualizar estado") { Task { await model.refresh() } }
             .disabled(model.busy)

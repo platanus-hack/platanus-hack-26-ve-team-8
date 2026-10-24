@@ -110,12 +110,19 @@ final class GuardianAppDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
         return false
     }
 
+    func showDashboard() {
+        dashboardWindow = dashboardWindow ?? NSApplication.shared.windows.first { $0.canBecomeMain }
+        dashboardWindow?.delegate = self
+        dashboardWindow?.deminiaturize(nil)
+        dashboardWindow?.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         Task { @MainActor in
             self.model.showAlerts = true
-            self.dashboardWindow?.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            self.showDashboard()
         }
         completionHandler()
     }
