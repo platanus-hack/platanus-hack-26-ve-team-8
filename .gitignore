@@ -1,0 +1,9 @@
+.DS_Store
+.build/
+__pycache__/
+*.pyc
+.venv/
+.env
+*.sqlite3*
+*.sock
+.guardian/

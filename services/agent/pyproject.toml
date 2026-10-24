@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guardian-agent"
+version = "0.1.0"
+description = "Local evidence and AI investigation service for macOS"
+requires-python = ">=3.11"
+dependencies = ["claude-agent-sdk==0.2.174", "truststore==0.10.5"]
+
+[project.scripts]
+guardian = "guardian.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
