@@ -1,13 +1,13 @@
 # Monorepo de Guardian
 
-Idioma obligatorio: español. Todo lo que escribas en este repositorio va en español:
-texto de la interfaz, mensajes de error, salida de la CLI, prompts y respuestas del
-modelo, documentación, comentarios, docstrings y mensajes de commit y PR. Responde
-también en español a quien te pida cambios. Solo se mantienen en inglés los
-identificadores de código, los nombres de métodos y campos del protocolo, los valores
-enumerados del protocolo (status, source, kind, tool) y los nombres propios o de
-productos. Para mostrar un valor enumerado al usuario, tradúcelo en el cliente; no
-cambies el valor en el protocolo. Al tocar texto existente en inglés, tradúcelo.
+Spanish is required only for app content: UI text, user-facing error messages,
+CLI output, and the app's model prompts and responses. Use English for conversations
+with contributors, commit messages, and PR titles and descriptions. Documentation,
+comments, and docstrings are not required to be in Spanish.
+Keep code identifiers, method names, protocol field names, protocol enum values
+(status, source, kind, tool), and proper or product names in English. Translate
+enum values for display in the client; do not change their protocol values.
+When editing existing English app content, translate it into Spanish.
 
 Construye un investigador defensivo para macOS, no un escáner ofensivo. Conserva el
 trabajo no relacionado. No ejecutes compilaciones del proyecto para verificar. Usa
