@@ -1,12 +1,13 @@
 :root {
   color-scheme: light dark;
-  --bg: #0b0d12;
-  --card: #141821;
-  --border: #252b38;
-  --text: #e8ebf2;
-  --muted: #9aa3b5;
-  --accent: #7c9cff;
-  --on-accent: #0b0d12;
+  --bg: #080909;
+  --card: #101111;
+  --border: #282b26;
+  --text: #ecede8;
+  --muted: #9a9d94;
+  --accent: #e0f505;
+  --link: var(--accent);
+  --on-accent: #080909;
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -15,20 +16,20 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f6f7f9;
+    --bg: #f5f5f2;
     --card: #ffffff;
-    --border: #e2e5ec;
-    --text: #151922;
-    --muted: #5b6475;
-    --accent: #3f5fe0;
-    --on-accent: #ffffff;
+    --border: #e1e3dc;
+    --text: #151613;
+    --muted: #5d6056;
+    /* Lime fill stays; link text darkens for contrast on light surfaces. */
+    --link: #4d5c00;
   }
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; }
 main { max-width: 960px; margin: 0 auto; padding: 0 24px; }
-a { color: var(--accent); }
+a { color: var(--link); }
 h1, h2, h3 { line-height: 1.2; margin: 0 0 12px; }
 p { margin: 0 0 12px; color: var(--muted); }
 
