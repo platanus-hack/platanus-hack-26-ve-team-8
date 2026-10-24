@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import ipaddress
 from pathlib import Path
 import platform
 import plistlib
@@ -12,6 +13,7 @@ from xml.parsers.expat import ExpatError
 
 PS_COMMAND = ("/bin/ps", "-axo", "pid=,ppid=,uid=,lstart=,comm=")
 LSOF_COMMAND = ("/usr/sbin/lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn")
+CONNECTIONS_COMMAND = ("/usr/sbin/lsof", "-nP", "-iTCP", "-sTCP:ESTABLISHED", "-Fpcn")
 FIREWALL_COMMAND = ("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate", "--getstealthmode")
 
 
@@ -70,6 +72,46 @@ def parse_listeners(output: str) -> list[dict]:
     return observations
 
 
+def _endpoint(value: str):
+    host, _, port = value.rpartition(":")
+    # La zona IPv6 (%en0) no forma parte de la dirección del equipo remoto.
+    address = ipaddress.ip_address(host.strip("[]").split("%", 1)[0])
+    return getattr(address, "ipv4_mapped", None) or address, int(port)
+
+
+def parse_connections(output: str, listening_ports: set[int]) -> list[dict]:
+    """Conexiones TCP entrantes desde otro equipo hacia un puerto local en escucha."""
+    observations = []
+    pid = None
+    executable = "unknown"
+    for line in output.splitlines():
+        if not line:
+            continue
+        field, value = line[0], line[1:]
+        if field == "p":
+            pid = int(value) if value.isdigit() else None
+            executable = "unknown"
+        elif field == "c":
+            executable = value.rsplit("/", 1)[-1]
+        elif field == "n" and pid is not None and "->" in value:
+            local, _, remote = value.partition("->")
+            try:
+                (local_host, local_port), (remote_host, remote_port) = _endpoint(local), _endpoint(remote)
+            except ValueError:
+                continue
+            # El propio Mac conectándose a sí mismo, aunque use su IP de red, no es otro equipo.
+            if local_port not in listening_ports or remote_host.is_loopback or remote_host == local_host:
+                continue
+            scope = "lan" if remote_host.is_private or remote_host.is_link_local else "public"
+            observations.append(_observation("tcp_connection", "tcp_connections", f"{pid}:{value}",
+                                            f"Conexión entrante de la red a {executable}",
+                                            {"pid": pid, "executable": executable, "direction": "inbound",
+                                             "local_address": str(local_host), "local_port": local_port,
+                                             "remote_address": str(remote_host), "remote_port": remote_port,
+                                             "remote_scope": scope}))
+    return observations
+
+
 def parse_firewall(output: str) -> list[dict]:
     """Analiza el estado de socketfilterfw; State 1 es activado y 2 bloquea todo lo entrante."""
     if "State = " not in output:
@@ -97,7 +139,7 @@ def _command_snapshot(source: str, command: tuple[str, ...], parser) -> tuple[li
         return [], _coverage(source, "unknown", "El comando de inspección falló o agotó el tiempo.")
     observations = parser(result.stdout)
     # lsof devuelve 1 sin salida cuando no hay sockets visibles que coincidan.
-    if source == "tcp_listeners" and result.returncode == 1 and not result.stdout and not result.stderr:
+    if source in {"tcp_listeners", "tcp_connections"} and result.returncode == 1 and not result.stdout and not result.stderr:
         return [], _coverage(source, "partial", "No hay escuchas TCP visibles; los sockets de otros usuarios pueden estar ocultos.")
     if result.returncode != 0 or result.stderr.strip():
         return observations, _coverage(source, "partial" if observations else "unknown",
@@ -159,7 +201,7 @@ def _launch_agents(directory: Path) -> tuple[list[dict], dict]:
 
 def collect_snapshot() -> tuple[list[dict], list[dict]]:
     """Inspecciona solo este Mac. Sin cambios, escaneos, shell, daemon ni estado almacenado."""
-    sources = ("processes", "tcp_listeners", "application_firewall", "user_launch_agents")
+    sources = ("processes", "tcp_listeners", "tcp_connections", "application_firewall", "user_launch_agents")
     if platform.system() != "Darwin":
         return [], [_coverage(source, "unsupported", "Este recolector requiere macOS.") for source in sources]
     observations = []
@@ -170,6 +212,11 @@ def collect_snapshot() -> tuple[list[dict], list[dict]]:
         items, status = _command_snapshot(source, command, parser)
         observations.extend(items)
         coverage.append(status)
+    ports = {o["attributes"]["port"] for o in observations if o["kind"] == "tcp_listener" and "port" in o["attributes"]}
+    items, status = _command_snapshot("tcp_connections", CONNECTIONS_COMMAND,
+                                      lambda output: parse_connections(output, ports))
+    observations.extend(items)
+    coverage.append(status)
     items, status = _launch_agents(Path.home() / "Library" / "LaunchAgents")
     observations.extend(items)
     coverage.append(status)

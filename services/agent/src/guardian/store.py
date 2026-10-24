@@ -112,6 +112,13 @@ class Store:
             ).fetchall()
         return [json.loads(row[0]) for row in rows]
 
+    def observation(self, identifier):
+        with self.connect() as db:
+            row = db.execute("SELECT payload FROM observations WHERE id=?", (identifier,)).fetchone()
+        if row is None:
+            raise ValueError("Observación no encontrada; toma una nueva instantánea.")
+        return json.loads(row[0])
+
     def count(self) -> int:
         with self.connect() as db:
             return db.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
@@ -151,13 +158,16 @@ class Store:
             seen_sources = set()
             for item in observations:
                 kind, source, attributes = item["kind"], item["source"], item["attributes"]
-                if kind not in {"file", "firewall", "tcp_listener"}:
+                if kind not in {"file", "firewall", "tcp_listener", "tcp_connection"}:
                     continue
                 if kind == "tcp_listener":
                     if attributes.get("bind_scope") not in {"any", "interface"}:
                         continue
                     # Un reinicio del mismo servidor no crea una señal solo por cambiar de PID.
                     identity = [attributes.get("executable"), attributes.get("local_address"), attributes.get("port"), attributes.get("bind_scope")]
+                elif kind == "tcp_connection":
+                    # Un equipo alerta una vez por servicio, no por cada puerto efímero o reconexión.
+                    identity = [attributes.get("executable"), attributes.get("local_port"), attributes.get("remote_address")]
                 else:
                     identity = item["entity"]
                 key = json.dumps([source, kind, identity], sort_keys=True)
@@ -185,13 +195,16 @@ class Store:
                         rule = "firewall_weakened"
                     elif kind == "tcp_listener" and previous is None:
                         rule, change = "listener_exposed", "created"
+                    elif kind == "tcp_connection" and previous is None:
+                        rule, change = "inbound_connection", "created"
                 if previous is None or old != attributes:
                     db.execute("INSERT OR REPLACE INTO watch_state VALUES (?, ?)", (key, json.dumps(item)))
                 if rule:
                     identifier = str(uuid.uuid4())
                     reason = {"file_changed": "Cambió un archivo de persistencia o configuración.",
                               "firewall_weakened": "Se desactivó el firewall o el modo sigiloso.",
-                              "listener_exposed": "Apareció una escucha TCP fuera de loopback."}[rule]
+                              "listener_exposed": "Apareció una escucha TCP fuera de loopback.",
+                              "inbound_connection": "Un equipo de la red se conectó a un servicio local."}[rule]
                     signal_attributes = {"rule": rule, "change": change}
                     if kind == "file":
                         signal_attributes["category"] = attributes.get("category", old.get("category"))
@@ -211,7 +224,7 @@ class Store:
             # Un directorio vacío inspeccionado correctamente también establece una referencia.
             seen_sources.update(c["source"] for c in coverage if c["source"] in FILE_SOURCES and c["status"] == "available")
             seen_sources.update(c["source"] for c in coverage
-                                if c["source"] == "tcp_listeners" and c["status"] in {"available", "partial"})
+                                if c["source"] in {"tcp_listeners", "tcp_connections"} and c["status"] in {"available", "partial"})
             for source in seen_sources:
                 db.execute("INSERT OR IGNORE INTO watch_sources VALUES (?)", (source,))
 

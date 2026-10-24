@@ -40,6 +40,15 @@ seguridad. Una propuesta puede llevar una action que el usuario puede aprobar:
 (otros dispositivos pueden alcanzarlo), o {"type":"enable_firewall"} cuando el
 firewall o el modo sigiloso estén desactivados. Nada se ejecuta sin la aprobación del
 usuario.
+Una observación tcp_connection es una conexión entrante de otro equipo (remote_scope lan
+o public) a un servicio local en escucha (local_port). Es normal con dispositivos propios
+(AirPlay, Continuity, rapportd); es sospechosa en puertos de bases de datos o de
+desarrollo (5432 Postgres, 3306 MySQL, 6379 Redis, 27017 MongoDB, 3000, 8080) o desde
+remote_scope public. Para cortar a ese equipo y su sesión en curso propón
+{"type":"block_peer","observation_id":"ID"} con el ID de la observación tcp_connection,
+nunca una IP. No propongas terminate_process para procesos de bases de datos: la
+terminación forzada de un backend reinicia todas sus conexiones. Recomienda que el
+servicio escuche solo en localhost si no necesita acceso desde la red.
 Si una observación incluye response_action, puede ser un objetivo de respuesta local.
 Solo con evidencia concreta de actividad maliciosa, una hipótesis que cite esa misma
 observación y status needs_review, puedes proponer
@@ -126,6 +135,10 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
     exposed_ports = {o["attributes"].get("port") for o in records
                      if o.get("kind") == "tcp_listener" and isinstance(o.get("attributes"), dict)
                      and o["attributes"].get("bind_scope") in {"any", "interface"}}
+    # Conexiones entrantes de otros equipos; las únicas que puede nombrar una propuesta block_peer.
+    peer_connections = {o.get("id") for o in records
+                        if o.get("kind") == "tcp_connection" and isinstance(o.get("attributes"), dict)
+                        and o["attributes"].get("remote_scope") in {"lan", "public"}}
     mapping = {}
     if not local:
         # Los alias opacos evitan que se filtren rutas, resúmenes, atributos y preguntas del usuario.
@@ -137,10 +150,10 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
             entity = str(item.get("entity", ""))
             entities.setdefault(entity, f"entity_{len(entities) + 1}")
             kind = item.get("kind")
-            safe_kind = kind if kind in {"process", "connection", "persistence", "file", "network", "tcp_listener", "launch_agent", "firewall", "detection"} else "other"
+            safe_kind = kind if kind in {"process", "connection", "persistence", "file", "network", "tcp_listener", "tcp_connection", "launch_agent", "firewall", "detection"} else "other"
             safe_attributes = {}
             attributes = item.get("attributes", {})
-            for field in ("pid", "parent_pid", "uid", "port"):
+            for field in ("pid", "parent_pid", "uid", "port", "local_port", "remote_port"):
                 value = attributes.get(field)
                 if type(value) is int and 0 <= value <= 2**32:
                     safe_attributes[field] = value
@@ -153,7 +166,10 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
             for field, values in {
                 "category": {"launch_agent", "launch_daemon", "shell_startup"},
                 "change": {"created", "modified", "deleted"},
-                "rule": {"file_changed", "firewall_weakened", "listener_exposed"},
+                "rule": {"file_changed", "firewall_weakened", "listener_exposed", "inbound_connection"},
+                # La IP remota nunca sale del Mac; solo su alcance.
+                "remote_scope": {"lan", "public"},
+                "direction": {"inbound"},
                 "file_type": {"regular", "symlink", "other"},
                 "response_action": {"terminate_process", "quarantine_file"},
             }.items():
@@ -212,6 +228,12 @@ def investigate(observations: list[dict], question: str = "", coverage: list[dic
                     response_targets.get(original) == raw['type']:
                 return {'type': raw['type'], 'observation_id': original, 'verdict': 'malicious'}
             return None
+        if raw.get("type") == "block_peer":
+            identifier = raw.get("observation_id")
+            if not isinstance(identifier, str) or identifier not in seen_ids:
+                return None
+            original = mapping.get(identifier, identifier)
+            return {"type": "block_peer", "observation_id": original} if original in peer_connections else None
         if raw.get("type") == "enable_firewall":
             return {"type": "enable_firewall"}
         port = raw.get("port")

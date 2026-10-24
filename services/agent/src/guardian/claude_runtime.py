@@ -55,7 +55,7 @@ INVESTIGATION_SCHEMA = {
             "type": "object", "properties": {
                 "title": {"type": "string"}, "description": {"type": "string"},
                 "action": {"type": "object", "properties": {
-                    "type": {"type": "string", "enum": ["block_port", "enable_firewall", "terminate_process", "quarantine_file"]},
+                    "type": {"type": "string", "enum": ["block_port", "block_peer", "enable_firewall", "terminate_process", "quarantine_file"]},
                     "observation_id": {"type": "string"},
                     "verdict": {"type": "string", "enum": ["malicious"]},
                     "port": {"type": "integer", "minimum": 1, "maximum": 65535}},

@@ -22,6 +22,7 @@ struct AgentStatus: Decodable, Sendable {
     let firewall: FirewallState?
     let exposed: [ExposedPort]?
     let blocked_ports: [Int]?
+    let blocked_peers: [String]?
 }
 struct ProtectionState: Decodable, Sendable {
     let enabled: Bool
@@ -192,9 +193,11 @@ struct AgentClient: Sendable {
     func investigate(_ question: String) async throws -> Investigation {
         try await request("investigate", params: ["question": question])
     }
-    func applyDefense(_ action: String, port: Int?) async throws -> AgentStatus {
+    func applyDefense(_ action: String, port: Int?, observation: String? = nil, address: String? = nil) async throws -> AgentStatus {
         var params: [String: any Sendable] = ["action": action]
         if let port { params["port"] = port }
+        if let observation { params["observation_id"] = observation }
+        if let address { params["address"] = address }
         return try await request("defense.apply", params: params)
     }
 

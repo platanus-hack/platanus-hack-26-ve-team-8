@@ -103,17 +103,18 @@ struct TopAlertsPanel<Details: View>: View {
 
     @ViewBuilder private func defenseButton(_ defense: AlertCopy.Defense) -> some View {
         if applied(defense) {
-            Label(defense.type == "block_port" ? "Puerto bloqueado" : "Firewall activado", systemImage: "checkmark.shield")
+            Label(defense.type == "block_peer" ? "Equipo bloqueado" : defense.type == "block_port" ? "Puerto bloqueado" : "Firewall activado", systemImage: "checkmark.shield")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.success)
                 .padding(.horizontal, 12).padding(.vertical, 10)
         } else {
-            Button(defense.label) { Task { await model.defend(defense.type, port: defense.port) } }
+            Button(defense.label) { Task { await model.defend(defense.type, port: defense.port, observation: defense.observation) } }
                 .buttonStyle(CommandButton()).disabled(model.busy)
                 .help("macOS te pedirá tu contraseña de administrador antes de cambiar nada.")
         }
     }
 
     private func applied(_ defense: AlertCopy.Defense) -> Bool {
+        if defense.type == "block_peer" { return model.peerBlocked(defense.observation) }
         if defense.type == "block_port", let port = defense.port { return model.status?.blocked_ports?.contains(port) == true }
         return model.status?.firewall?.firewall_enabled == true
     }
@@ -329,7 +330,7 @@ struct TopAlertsPanel<Details: View>: View {
 
 /// Traduce una señal del agente a un título y una explicación que no requieren conocimientos técnicos.
 struct AlertCopy {
-    struct Defense { let label: String; let type: String; let port: Int? }
+    struct Defense { let label: String; let type: String; let port: Int?; var observation: String? = nil }
     let title: String
     let detail: String
     let short: String
@@ -357,6 +358,17 @@ struct AlertCopy {
             short = program + (port.map { " · puerto \($0)" } ?? "")
             priority = 1
             defense = port.map { Defense(label: "Bloquear :\($0)", type: "block_port", port: $0) }
+        case "inbound_connection":
+            let program = alert.after.attributes["executable"]?.text ?? "un servicio"
+            let port = alert.after.attributes["local_port"]?.int
+            let remote = alert.after.attributes["remote_address"]?.text ?? "Un equipo"
+            let internet = alert.after.attributes["remote_scope"]?.text == "public"
+            title = "\(remote) se conectó a \(program)" + (port.map { " (:\($0))" } ?? "")
+            detail = (internet ? "Un equipo de internet" : "Un equipo de tu red local") + " (\(remote)) abrió una conexión con \(program)"
+                + (port.map { " en el puerto \($0)" } ?? "") + ". Si no lo reconoces, bloquéalo: se corta su sesión actual y no podrá volver a conectarse."
+            short = remote + (port.map { " → :\($0)" } ?? "")
+            priority = 0
+            defense = Defense(label: "Bloquear equipo", type: "block_peer", port: nil, observation: alert.after.id)
         case "file_changed":
             let name = alert.signal.entity.split(separator: "/").last.map(String.init) ?? alert.signal.entity
             title = switch change {

@@ -13,6 +13,9 @@ private let spanishLabels = [
     "created": "Creado", "modified": "Modificado", "deleted": "Eliminado",
     "file_changed": "Cambio de archivo", "firewall_weakened": "Protección del firewall reducida",
     "listener_exposed": "Nueva escucha expuesta", "launch_daemon": "LaunchDaemon",
+    "inbound_connection": "Conexión entrante de la red", "tcp_connection": "Conexión entrante",
+    "tcp_connections": "Conexiones entrantes", "block_peer": "Bloquear equipo", "lan": "Red local",
+    "public": "Internet", "inbound": "Entrante",
     "shell_startup": "Inicio del shell", "regular": "Archivo regular", "symlink": "Enlace simbólico", "other": "Otro",
 
     "inconclusive": "No concluyente", "needs_review": "Requiere revisión", "no_finding": "Sin hallazgos",
@@ -167,14 +170,22 @@ final class GuardianModel {
         }
     }
 
-    func defend(_ action: String, port: Int? = nil) async {
+    func defend(_ action: String, port: Int? = nil, observation: String? = nil, address: String? = nil) async {
         guard !busy else { return }
         busy = true
         do {
-            status = try await client.applyDefense(action, port: port)
+            status = try await client.applyDefense(action, port: port, observation: observation, address: address)
             error = nil
         } catch { self.error = error.localizedDescription }
         busy = false
+    }
+
+    /// La IP solo se lee de la evidencia local de una conexión entrante; el servicio vuelve a validarla.
+    func peerBlocked(_ observation: String?) -> Bool {
+        guard let observation else { return false }
+        let item = alerts.first { $0.after.id == observation }?.after ?? observations.first { $0.id == observation }
+        guard case .string(let address)? = item?.attributes["remote_address"] else { return false }
+        return status?.blocked_peers?.contains(address) == true
     }
 
     func protect(_ operation: String, params: [String: any Sendable]) async {

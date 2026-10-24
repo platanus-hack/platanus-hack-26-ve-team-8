@@ -43,7 +43,10 @@
       "enabled": false,
       "remaining": 20,
       "events": []
-    }
+    },
+    "blocked_peers": [
+      "192.168.1.9"
+    ]
   },
   "observation": {
     "id": "1c7f0b5e-0000-4000-8000-000000000001",
@@ -89,6 +92,14 @@
         "action": {
           "type": "block_port",
           "port": 3000
+        }
+      },
+      {
+        "title": "Bloquear equipo 192.168.1.9",
+        "description": "Conexión entrante inesperada a Postgres",
+        "action": {
+          "type": "block_peer",
+          "observation_id": "1c7f0b5e-0000-4000-8000-000000000001"
         }
       }
     ],

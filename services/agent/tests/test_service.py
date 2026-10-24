@@ -105,6 +105,40 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.dispatch({"method": "defense.apply", "params": {"action": "open_port", "port": 22}})
 
+    def test_inbound_peer_alerts_once_and_can_be_blocked(self):
+        def connection(identifier, remote_port, remote="192.168.1.9"):
+            return {"id": identifier, "timestamp": datetime.now(timezone.utc).isoformat(), "kind": "tcp_connection",
+                    "source": "tcp_connections", "entity": f"40:192.168.1.4:5432->{remote}:{remote_port}",
+                    "summary": "Conexión entrante de la red a postgres",
+                    "attributes": {"pid": 40, "executable": "postgres", "direction": "inbound",
+                                   "local_address": "192.168.1.4", "local_port": 5432, "remote_address": remote,
+                                   "remote_port": remote_port, "remote_scope": "lan"}}
+        coverage = [{"source": "tcp_connections", "status": "partial", "detail": "Snapshot only"}]
+        snapshots = [[observation()], [connection("c1", 51022)], [connection("c2", 51023)]]
+        self.service.collector = lambda: (snapshots.pop(0) if snapshots else [], coverage)
+        for _ in range(3):
+            self.service.scan()
+        alerts = self.store.alerts()
+        # Reconnecting from a new ephemeral port is the same device: one alert.
+        self.assertEqual([a["signal"]["attributes"]["rule"] for a in alerts], ["inbound_connection"])
+        self.assertEqual(alerts[0]["after"]["id"], "c1")
+        with patch("guardian.service.defense.block_peer") as block:
+            status = self.service.dispatch({"method": "defense.apply", "params": {"action": "block_peer", "observation_id": "c1"}})
+        block.assert_called_once_with("192.168.1.9")
+        self.assertEqual(status["blocked_peers"], ["192.168.1.9"])
+        for params in ({"action": "block_peer", "observation_id": "one"},      # a process, not a connection
+                       {"action": "block_peer", "observation_id": "missing"},
+                       {"action": "block_peer", "address": "192.168.1.9"},     # raw IPs are not accepted
+                       {"action": "unblock_peer", "address": "10.0.0.1"}):     # not blocked by Guardian
+            with self.subTest(params=params), patch("guardian.service.defense.block_peer") as block:
+                with self.assertRaises(ValueError):
+                    self.service.dispatch({"method": "defense.apply", "params": params})
+                block.assert_not_called()
+        with patch("guardian.service.defense.unblock_peer") as unblock:
+            status = self.service.dispatch({"method": "defense.apply", "params": {"action": "unblock_peer", "address": "192.168.1.9"}})
+        unblock.assert_called_once_with("192.168.1.9")
+        self.assertEqual(status["blocked_peers"], [])
+
     def test_concurrent_investigation_rejected(self):
         self.service.investigation_lock.acquire()
         try:

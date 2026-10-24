@@ -159,6 +159,34 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual([a.get("action") for a in result["proposed_actions"]],
                          [{"type": "block_port", "port": 3000}, None, None, {"type": "enable_firewall"}])
 
+    @patch.dict(os.environ, {**ENV, "GUARDIAN_MODEL_ENDPOINT": "https://provider.example/v1/chat/completions",
+                             "GUARDIAN_ALLOW_CLOUD": "1"}, clear=True)
+    def test_block_peer_names_inspected_connection_and_never_leaks_ip(self):
+        connection = {"id": "conn-id", "kind": "tcp_connection", "entity": "40:192.168.1.4:5432->192.168.1.77:51022",
+                      "timestamp": OBS[0]["timestamp"], "source": "tcp_connections", "summary": "Conexión entrante a postgres",
+                      "attributes": {"pid": 40, "executable": "postgres", "direction": "inbound", "local_address": "192.168.1.4",
+                                     "local_port": 5432, "remote_address": "192.168.1.77", "remote_port": 51022,
+                                     "remote_scope": "lan"}}
+        answer = json.loads(final("observation_1")["choices"][0]["message"]["content"])
+        answer["proposed_actions"] = [
+            {"title": "Bloquear", "description": "Equipo desconocido", "action": {"type": "block_peer", "observation_id": "observation_1"}},
+            {"title": "Proceso", "description": "No es conexión", "action": {"type": "block_peer", "observation_id": "observation_2"}},
+            {"title": "Inventado", "description": "IP", "action": {"type": "block_peer", "observation_id": "192.168.1.77"}}]
+        payloads = []
+        responses = [tool("search_observations", {}), {"choices": [{"message": {"content": json.dumps(answer)}}]}]
+        def complete(endpoint, key, payload, timeout):
+            payloads.append(copy.deepcopy(payload))
+            return responses.pop(0)
+        with patch("guardian.investigator._complete", side_effect=complete):
+            result = investigate([connection, OBS[0]])
+        evidence = json.loads(payloads[1]["messages"][-1]["content"])["untrusted_evidence"]["items"][0]
+        self.assertEqual(evidence["kind"], "tcp_connection")
+        self.assertEqual(evidence["attributes"], {"pid": 40, "local_port": 5432, "remote_port": 51022,
+                                                  "remote_scope": "lan", "direction": "inbound"})
+        self.assertNotIn("192.168.1", json.dumps(payloads))
+        self.assertEqual([a.get("action") for a in result["proposed_actions"]],
+                         [{"type": "block_peer", "observation_id": "conn-id"}, None, None])
+
     @patch.dict(os.environ, ENV, clear=True)
     def test_timestamp_and_search_pagination(self):
         records = [{**OBS[0], "id": f"id-{i}"} for i in range(40)]

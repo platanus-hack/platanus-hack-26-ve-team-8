@@ -17,6 +17,7 @@ Métodos:
   "firewall":{"firewall_enabled":bool,"stealth_mode":bool}|null,
   "exposed":[{"port":int,"executable":str,"bind_scope":"any"|"interface","blocked":bool}],
   "blocked_ports":[int],
+  "blocked_peers":[str],
   "last_file_scan":str|null,
   "alerts":{"unacknowledged":int,"pending":int},
   "automation":{"enabled":bool,"reason":str,"remaining":int,"cooldown_seconds":int}}
@@ -30,10 +31,14 @@ Métodos:
 - investigations -> {"items":[Investigation]}
 - scan -> status (instantánea local explícita de solo lectura)
 - investigate -> Investigation (params question opcional; usa la evidencia registrada)
-- defense.apply -> status (params action "block_port"|"unblock_port"|"enable_firewall",
-  port int 1-65535 para las acciones de puerto). Muestra el aviso de administrador de
-  macOS y espera al usuario; si cancela, devuelve un error y no cambia nada. No existen
-  acciones para permitir o abrir acceso.
+- defense.apply -> status (params action "block_port"|"unblock_port"|"enable_firewall"|
+  "block_peer"|"unblock_peer", port int 1-65535 para las acciones de puerto). block_peer
+  recibe observation_id de una observación tcp_connection registrada; el servicio lee la
+  IP remota de esa evidencia local, nunca del cliente ni del modelo. Bloquea paquetes
+  entrantes de esa IP y elimina sus estados de pf, lo que corta también la sesión ya
+  abierta. unblock_peer recibe address, que debe estar en blocked_peers. Muestra el aviso
+  de administrador de macOS y espera al usuario; si cancela, devuelve un error y no
+  cambia nada. No existen acciones para permitir o abrir acceso.
 - monitoring.set -> status (params enabled bool; solo afecta al ciclo de vida del servicio en primer plano)
 - alerts -> {"items":[Alert]} (params limit opcional, predeterminado 100, máximo 500).
   Orden descendente de creación; conserva siete días.
@@ -52,14 +57,21 @@ Investigation: {"id":str,"created_at":str,"status":str,"title":str,
 "summary":str,"hypotheses":[{"statement":str,"status":str,
 "evidence_ids":[str],"counterevidence":str}],"steps":[{"tool":str,
 "summary":str}],"proposed_actions":[{"title":str,"description":str,
-"action"?:{"type":"block_port","port":int}|{"type":"enable_firewall"}}],
+"action"?:{"type":"block_port","port":int}|{"type":"block_peer","observation_id":str}|
+{"type":"enable_firewall"}}],
 "limitations":[str]}.
 Ejemplos de status: inconclusive, needs_review, no_finding. Ningún número de confianza
 implica seguridad. La action de una propuesta solo se conserva si es válida; block_port
-debe nombrar un puerto observado escuchando en una dirección que no sea loopback. Nada
+debe nombrar un puerto observado escuchando en una dirección que no sea loopback y
+block_peer una observación tcp_connection que el modelo inspeccionó. Nada
 se aplica hasta que el usuario llama a defense.apply y lo aprueba. Los atributos de
 tcp_listener añaden bind_scope ("any"|"loopback"|"interface") y port; una observación
-firewall tiene firewall_enabled y stealth_mode.
+firewall tiene firewall_enabled y stealth_mode. Una observación `tcp_connection` (fuente
+`tcp_connections`) es una conexión TCP establecida desde otro equipo hacia un puerto local
+en escucha; se omiten loopback, las salientes y las del propio Mac a su IP. Atributos:
+pid, executable, direction ("inbound"), local_address, local_port, remote_address,
+remote_port y remote_scope ("lan"|"public"). Sin root solo se ven procesos del usuario.
+La nube recibe local_port, remote_port, remote_scope y direction, nunca remote_address.
 
 Cargas de ejemplo: fixtures.json. services/agent/tests/test_contract.py comprueba la
 salida de Python contra ese archivo; mantenlo sincronizado con los modelos de Swift en
@@ -101,7 +113,7 @@ Alert: {"id":str,"created_at":str ISO8601 UTC,"reason":str,
 "signal":Observation,"before":Observation|null,"after":Observation,
 "acknowledged":bool,"investigated":bool}.
 La señal tiene kind `detection` y atributos `rule` (`file_changed`,
-`firewall_weakened`, `listener_exposed`) y `change` (`created`, `modified`, `deleted`).
+`firewall_weakened`, `listener_exposed`, `inbound_connection`) y `change` (`created`, `modified`, `deleted`).
 El estado anterior es null cuando no existe evidencia anterior disponible.
 Los estados incrustados preservan sus IDs incluso si venció su observación histórica.
 La evidencia de una señal se conserva hasta que la señal vence a los siete días.
@@ -123,7 +135,9 @@ inspeccionados correctamente también establecen referencia. Los archivos inacce
 conservan su último estado válido. Una ausencia comprobada produce un estado
 `present: false`, nunca una inferencia a partir de un fallo de lectura.
 Las escuchas se identifican por ejecutable, dirección, puerto y alcance, sin depender
-solo del PID. La visibilidad parcial no permite concluir que una escucha desapareció.
+solo del PID. Las conexiones entrantes se identifican por ejecutable, puerto local e IP
+remota: un equipo genera una señal `inbound_connection` por servicio, no una por cada
+puerto efímero o reconexión. La visibilidad parcial no permite concluir que una escucha desapareció.
 
 `automation.reason` puede ser `disabled`, `paused`, `provider_unavailable`,
 `cloud_disabled`, `investigating`, `no_signals`, `quota_exhausted`, `cooldown` o `ready`.

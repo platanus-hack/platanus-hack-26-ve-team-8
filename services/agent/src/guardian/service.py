@@ -55,6 +55,7 @@ class GuardianService:
         # ponytail: en memoria; tras reiniciar el servicio pf conserva los bloqueos hasta reiniciar
         # el Mac, así que status puede omitirlos (nunca inventarlos). Leer las anclas con root si hace falta.
         self.blocked = set()
+        self.blocked_peers = set()
         self.defense_lock = threading.Lock()
         self.response_lock = threading.RLock()
         self.response = Response(store)
@@ -76,7 +77,7 @@ class GuardianService:
                     "coverage": self.coverage, "observation_count": self.store.count(),
                     "last_scan": self.last_scan, "firewall": self.firewall,
                     "exposed": [dict(item, blocked=item["port"] in self.blocked) for item in self.exposed],
-                    "blocked_ports": sorted(self.blocked)}
+                    "blocked_ports": sorted(self.blocked), "blocked_peers": sorted(self.blocked_peers)}
 
     def scan(self, force_files=False):
         with self.scan_lock:
@@ -234,14 +235,38 @@ class GuardianService:
 
     def apply_defense(self, params):
         action, port = params.get("action"), params.get("port")
-        if action not in {"block_port", "unblock_port", "enable_firewall"}:
+        if action not in {"block_port", "unblock_port", "enable_firewall", "block_peer", "unblock_peer"}:
             raise ValueError("Acción de defensa desconocida")
+        address = None
+        if action == "block_peer":
+            # La IP sale de la evidencia local, nunca del cliente ni del modelo.
+            identifier = params.get("observation_id")
+            if not isinstance(identifier, str) or not 1 <= len(identifier) <= 100:
+                raise ValueError("observation_id debe identificar una conexión entrante")
+            with self.lock:
+                item = self.store.observation(identifier)
+            if item.get("kind") != "tcp_connection" or item["attributes"].get("remote_scope") not in {"lan", "public"}:
+                raise ValueError("Solo se puede bloquear el equipo de una conexión entrante observada")
+            address = item["attributes"].get("remote_address")
+        elif action == "unblock_peer":
+            address = params.get("address")
+            with self.lock:
+                if not isinstance(address, str) or address not in self.blocked_peers:
+                    raise ValueError("Ese equipo no fue bloqueado por Guardian en esta sesión")
         if not self.defense_lock.acquire(blocking=False):
             raise ValueError("Otra acción de defensa está esperando aprobación")
         try:
             # Espera mientras el aviso de contraseña de macOS está abierto; status sigue respondiendo.
             if action == "enable_firewall":
                 defense.enable_firewall()
+            elif action == "block_peer":
+                defense.block_peer(address)
+                with self.lock:
+                    self.blocked_peers.add(address)
+            elif action == "unblock_peer":
+                defense.unblock_peer(address)
+                with self.lock:
+                    self.blocked_peers.discard(address)
             elif action == "block_port":
                 defense.block_port(port)
                 with self.lock:

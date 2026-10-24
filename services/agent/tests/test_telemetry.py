@@ -38,6 +38,22 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual([(i["attributes"]["port"], i["attributes"]["bind_scope"]) for i in items],
                          [(3000, "any"), (5173, "loopback"), (631, "loopback"), (8080, "interface")])
 
+    def test_connections_keep_only_inbound_from_other_devices(self):
+        output = ("p40\ncpostgres\n"
+                  "n192.168.1.4:5432->192.168.1.9:51022\n"      # LAN peer into Postgres
+                  "n192.168.1.4:5432->192.168.1.4:51023\n"      # this Mac via its own IP
+                  "n127.0.0.1:5432->127.0.0.1:51024\n"          # loopback
+                  "n192.168.1.4:51025->17.253.144.10:443\n"     # outbound
+                  "n[fe80::1%en0]:5432->[fe80::2%en0]:51026\n"  # IPv6 link-local
+                  "n[::ffff:10.0.0.4]:5432->[::ffff:8.8.8.8]:51027\n"
+                  "nbroken->value\n")
+        items = telemetry.parse_connections(output, {5432})
+        self.assertEqual([(i["attributes"]["remote_address"], i["attributes"]["remote_scope"]) for i in items],
+                         [("192.168.1.9", "lan"), ("fe80::2", "lan"), ("8.8.8.8", "public")])
+        self.assertEqual(items[0]["kind"], "tcp_connection")
+        self.assertEqual({k: items[0]["attributes"][k] for k in ("pid", "executable", "local_port", "remote_port", "direction")},
+                         {"pid": 40, "executable": "postgres", "local_port": 5432, "remote_port": 51022, "direction": "inbound"})
+
     def test_firewall_state(self):
         off = telemetry.parse_firewall("Firewall is disabled. (State = 0)\nFirewall stealth mode is off\n")
         on = telemetry.parse_firewall("Firewall is enabled. (State = 1)\nFirewall stealth mode is on\n")
@@ -86,9 +102,10 @@ class TelemetryTests(unittest.TestCase):
         with patch.object(telemetry.platform, "system", return_value="Darwin"), patch.object(telemetry.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")) as run, patch.object(telemetry, "_launch_agents", return_value=([], {"source": "user_launch_agents", "status": "partial", "detail": "fixture"})), patch.object(telemetry.shutil, "which", return_value=None):
             items, coverage = telemetry.collect_snapshot()
         self.assertEqual(items, [])
-        self.assertEqual(len(coverage), 5)
+        self.assertEqual(len(coverage), 6)
         self.assertEqual([call.args[0] for call in run.call_args_list],
-                         [telemetry.PS_COMMAND, telemetry.LSOF_COMMAND, telemetry.FIREWALL_COMMAND])
+                         [telemetry.PS_COMMAND, telemetry.LSOF_COMMAND, telemetry.FIREWALL_COMMAND,
+                          telemetry.CONNECTIONS_COMMAND])
         self.assertTrue(all(call.kwargs["shell"] is False for call in run.call_args_list))
 
 

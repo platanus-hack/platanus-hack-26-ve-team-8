@@ -652,6 +652,17 @@ struct Dashboard: View {
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
                 }
+                ForEach(status.blocked_peers ?? [], id: \.self) { address in
+                    Hairline()
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle.badge.xmark").foregroundStyle(.secondary).frame(width: 16)
+                        Text("Equipo \(address) bloqueado").foregroundStyle(.secondary)
+                        Spacer(minLength: 12)
+                        Button("Desbloquear") { Task { await model.defend("unblock_peer", address: address) } }
+                            .buttonStyle(ArkButton(prominent: false))
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
             }
             .card(padding: 0)
             .disabled(model.busy)
@@ -1061,6 +1072,13 @@ struct ProposalStatus: View {
             if defense.type == "terminate_process" || defense.type == "quarantine_file" {
                 Text("Respuesta de IA: consulta el resultado en Señales → Historial de respuesta.")
                     .font(.caption).foregroundStyle(.secondary)
+            } else if defense.type == "block_peer", model.peerBlocked(defense.observation_id) {
+                Pill("Aplicada", .success)
+            } else if defense.type == "block_peer", let observation = defense.observation_id {
+                Button("Bloquear equipo") { Task { await model.defend("block_peer", observation: observation) } }
+                    .buttonStyle(ArkButton())
+                    .disabled(model.busy)
+                    .help("Corta la conexión de ese equipo y bloquea sus conexiones nuevas. Pide tu contraseña de administrador de macOS.")
             } else if defense.type == "block_port", let port = defense.port, model.status?.blocked_ports?.contains(port) == true {
                 Pill("Aplicada", .success)
             } else if defense.type == "block_port" || defense.type == "enable_firewall" {
@@ -1227,7 +1245,7 @@ func toneColor(_ status: String) -> Color {
 func evidenceSymbol(_ name: String) -> String {
     switch name {
     case "process", "processes": "cpu"
-    case "tcp_listener", "tcp_listeners": "network"
+    case "tcp_listener", "tcp_listeners", "tcp_connection", "tcp_connections": "network"
     case "launch_agent", "user_launch_agents": "gearshape.2"
     case "firewall", "application_firewall": "flame"
     case "osquery": "magnifyingglass"
