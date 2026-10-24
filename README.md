@@ -13,6 +13,17 @@ prototipo temprano, no un antivirus validado ni un monitor de endpoints completo
 - `packages/contracts`: contrato compartido de la API local.
 - `docs`: arquitectura y límites operativos.
 
+## Web deployment (Vercel)
+
+Import this repository with **Root Directory** set to the repository root (`.`),
+not `apps/web`. The root `vercel.json` sets the build command and publishes
+`apps/web/dist/client`. TanStack Start prerenders the landing page to static HTML;
+this deployment does not need a server adapter or environment variables.
+
+After pushing changes, redeploy and check `/`, `/anatomy.html`, and `/icon.png`.
+If server functions or request-time rendering are added later, this static
+deployment will need a server adapter.
+
 ## Configuración inicial
 
 Se necesitan Python 3.11+ y el Claude Agent SDK oficial para las investigaciones con
