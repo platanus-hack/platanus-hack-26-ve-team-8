@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import defense
 from .store import Store
 from .providers import provider_config
 from .onboarding import sdk_available, validate_key
@@ -38,6 +39,12 @@ class GuardianService:
         self.dirty = False
         self.progress = {"active": False, "started_at": None, "steps": []}
         self.stop = threading.Event()
+        self.exposed = []
+        self.firewall = None
+        # ponytail: en memoria; tras reiniciar el servicio pf conserva los bloqueos hasta reiniciar
+        # el Mac, así que status puede omitirlos (nunca inventarlos). Leer las anclas con root si hace falta.
+        self.blocked = set()
+        self.defense_lock = threading.Lock()
 
     def status(self):
         with self.lock:
@@ -52,7 +59,9 @@ class GuardianService:
                     "onboarding_required": not provider.configured or (provider.name == "anthropic" and os.getenv("GUARDIAN_ALLOW_CLOUD") != "1"),
                     "sdk_available": sdk_available(),
                     "coverage": self.coverage, "observation_count": self.store.count(),
-                    "last_scan": self.last_scan}
+                    "last_scan": self.last_scan, "firewall": self.firewall,
+                    "exposed": [dict(item, blocked=item["port"] in self.blocked) for item in self.exposed],
+                    "blocked_ports": sorted(self.blocked)}
 
     def scan(self):
         with self.scan_lock:
@@ -60,6 +69,12 @@ class GuardianService:
             with self.lock:
                 self.dirty = bool(self.store.ingest(observations)) or self.dirty
                 self.coverage = coverage
+                listeners = {(o["attributes"]["port"], o["attributes"].get("executable", "unknown"), o["attributes"]["bind_scope"])
+                             for o in observations if o.get("kind") == "tcp_listener"
+                             and o["attributes"].get("bind_scope") in {"any", "interface"} and "port" in o["attributes"]}
+                self.exposed = [{"port": port, "executable": executable, "bind_scope": scope}
+                                for port, executable, scope in sorted(listeners)]
+                self.firewall = next((o["attributes"] for o in observations if o.get("kind") == "firewall"), None)
                 self.last_scan = datetime.now(timezone.utc).isoformat()
                 self.store.prune()
         return self.status()
@@ -120,6 +135,8 @@ class GuardianService:
             if not isinstance(question, str) or len(question) > 4000:
                 raise ValueError("question debe ser texto de 4000 caracteres como máximo")
             return self.investigate(question)
+        if method == "defense.apply":
+            return self.apply_defense(params)
         if method == "investigation.progress":
             with self.lock:
                 return {**self.progress, "steps": list(self.progress["steps"])}
@@ -131,6 +148,28 @@ class GuardianService:
                 self.monitoring = enabled
             return self.status()
         raise ValueError("Método desconocido")
+
+    def apply_defense(self, params):
+        action, port = params.get("action"), params.get("port")
+        if action not in {"block_port", "unblock_port", "enable_firewall"}:
+            raise ValueError("Acción de defensa desconocida")
+        if not self.defense_lock.acquire(blocking=False):
+            raise ValueError("Otra acción de defensa está esperando aprobación")
+        try:
+            # Espera mientras el aviso de contraseña de macOS está abierto; status sigue respondiendo.
+            if action == "enable_firewall":
+                defense.enable_firewall()
+            elif action == "block_port":
+                defense.block_port(port)
+                with self.lock:
+                    self.blocked.add(port)
+            else:
+                defense.unblock_port(port)
+                with self.lock:
+                    self.blocked.discard(port)
+        finally:
+            self.defense_lock.release()
+        return self.scan()
 
     def configure_provider(self, params):
         if params.get("allow_cloud") is not True:

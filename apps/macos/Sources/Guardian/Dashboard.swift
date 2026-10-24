@@ -14,7 +14,7 @@ enum Page: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .live: "Mira a Claude defender este Mac en tiempo real."
-        case .overview: "Primero la evidencia. Las acciones son solo propuestas."
+        case .overview: "Primero la evidencia. Nada cambia sin tu aprobación."
         case .observations: "Evidencia local registrada, tratada como no confiable."
         case .investigations: "Hipótesis, contraevidencia y propuestas."
         }
@@ -234,6 +234,7 @@ struct Dashboard: View {
             }
             investigatorInput
             if let status = model.status {
+                exposure(status)
                 section("Cobertura de recolección", "Lo que la última instantánea pudo y no pudo ver.") {
                     VStack(spacing: 0) {
                         if status.coverage.isEmpty {
@@ -257,8 +258,62 @@ struct Dashboard: View {
                     .card(padding: 0)
                 }
             }
-            Text("La telemetría local es evidencia no confiable. La falta de cobertura o de hallazgos no demuestra que este Mac sea seguro. Esta app nunca ejecuta remediaciones.")
+            Text("La telemetría local es evidencia no confiable. La falta de cobertura o de hallazgos no demuestra que este Mac sea seguro. Arkangel solo bloquea puertos o activa el firewall después de que lo apruebes en el aviso de administrador de macOS.")
                 .font(.caption).foregroundStyle(.tertiary)
+        }
+    }
+
+    private func exposure(_ status: AgentStatus) -> some View {
+        section("Exposición de red", "Puertos que otros dispositivos pueden alcanzar. Un bloqueo descarta sus conexiones nuevas; este Mac puede seguir usando el puerto hasta que lo desbloquees o reinicies.") {
+            VStack(spacing: 0) {
+                if let firewall = status.firewall {
+                    let protected = firewall.firewall_enabled && firewall.stealth_mode
+                    HStack(spacing: 12) {
+                        Image(systemName: protected ? "checkmark.shield" : "exclamationmark.shield").foregroundStyle(.secondary).frame(width: 16)
+                        Text("Firewall \(firewall.firewall_enabled ? "activado" : "desactivado") · modo sigiloso \(firewall.stealth_mode ? "activado" : "desactivado")")
+                        Spacer(minLength: 12)
+                        if !protected {
+                            Button("Activar firewall y modo sigiloso") { Task { await model.defend("enable_firewall") } }
+                                .buttonStyle(ArkButton(prominent: false))
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                let exposed = status.exposed ?? []
+                if exposed.isEmpty {
+                    Hairline()
+                    Text("No se vieron escuchas accesibles desde otros dispositivos.").foregroundStyle(.secondary).padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(exposed) { item in
+                    Hairline()
+                    HStack(spacing: 12) {
+                        Image(systemName: "network").foregroundStyle(.secondary).frame(width: 16)
+                        Text("Puerto \(item.port)").fontWeight(.medium).monospacedDigit()
+                        Text("\(item.executable) · \(item.bind_scope == "any" ? "todas las interfaces" : "una interfaz")").foregroundStyle(.secondary)
+                        Spacer(minLength: 12)
+                        if item.blocked { Pill("Bloqueado", .success) }
+                        Button(item.blocked ? "Desbloquear" : "Bloquear desde la red") {
+                            Task { await model.defend(item.blocked ? "unblock_port" : "block_port", port: item.port) }
+                        }
+                        .buttonStyle(ArkButton(prominent: !item.blocked))
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                ForEach((status.blocked_ports ?? []).filter { port in !exposed.contains { $0.port == port } }, id: \.self) { port in
+                    Hairline()
+                    HStack(spacing: 12) {
+                        Image(systemName: "network.slash").foregroundStyle(.secondary).frame(width: 16)
+                        Text("Puerto \(port) bloqueado · sin escucha ahora").foregroundStyle(.secondary)
+                        Spacer(minLength: 12)
+                        Button("Desbloquear") { Task { await model.defend("unblock_port", port: port) } }
+                            .buttonStyle(ArkButton(prominent: false))
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+            }
+            .card(padding: 0)
+            .disabled(model.busy)
         }
     }
 
@@ -506,7 +561,7 @@ struct Dashboard: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: 8)
-                            Pill("No aplicada", .secondary)
+                            ProposalStatus(action: action, model: model)
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -556,6 +611,28 @@ struct Dashboard: View {
 }
 
 // MARK: Components
+
+/// Botón de aprobación para una propuesta con una acción de defensa tipada; si no, "No aplicada".
+struct ProposalStatus: View {
+    let action: ProposedAction
+    @Bindable var model: GuardianModel
+    var body: some View {
+        if let defense = action.action {
+            if defense.type == "block_port", let port = defense.port, model.status?.blocked_ports?.contains(port) == true {
+                Pill("Aplicada", .success)
+            } else {
+                Button(defense.type == "block_port" ? "Bloquear puerto \(defense.port ?? 0)" : "Activar firewall") {
+                    Task { await model.defend(defense.type, port: defense.port) }
+                }
+                .buttonStyle(ArkButton())
+                .disabled(model.busy)
+                .help("Pide tu contraseña de administrador de macOS antes de cambiar nada.")
+            }
+        } else {
+            Pill("No aplicada", .secondary)
+        }
+    }
+}
 
 struct BrandMark: View {
     let size: CGFloat
@@ -680,6 +757,7 @@ func evidenceSymbol(_ name: String) -> String {
     case "process", "processes": "cpu"
     case "tcp_listener", "tcp_listeners": "network"
     case "launch_agent", "user_launch_agents": "gearshape.2"
+    case "firewall", "application_firewall": "flame"
     case "osquery": "magnifyingglass"
     case "evidence_window": "clock.arrow.circlepath"
     case "service": "server.rack"

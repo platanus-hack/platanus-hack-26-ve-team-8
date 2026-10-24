@@ -3,7 +3,9 @@
 Cliente SwiftUI -> socket Unix privado -> servicio en Python -> evidencia en SQLite.
 El investigador consulta una ventana acotada de evidencia registrada mediante
 herramientas de solo lectura. No puede llamar a subprocesos, leer archivos arbitrarios
-ni ejecutar la remediación propuesta.
+ni ejecutar la remediación propuesta. Las defensas aprobadas se ejecutan en service.py
+mediante defense.py: comandos fijos, solo puertos enteros, tras el aviso de
+administrador de macOS y siempre reduciendo la exposición de red.
 
 Los recolectores siempre se ejecutan localmente. La recolección de procesos excluye
 argv y el entorno; la inspección de arranque extrae metadatos seleccionados, no el

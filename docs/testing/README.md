@@ -1,10 +1,13 @@
 # Testing Arkangel
 
-Arkangel is currently a **read-only defensive investigator**. It observes local
-processes, TCP listeners, and user LaunchAgent metadata, then lets a model investigate
-recorded evidence. It cannot block connections, kill processes, quarantine files,
-or stop data theft. Proposed actions are not applied. If the acceptance requirement
-is “stop my colleague's agents from stealing data,” this version does not meet it.
+Arkangel es un **investigador defensivo** que observa procesos locales, escuchas TCP,
+el estado del firewall y metadatos de los LaunchAgents del usuario, y deja que un modelo
+investigue la evidencia registrada. Su única prevención es reducir la exposición de red
+con tu aprobación: bloquear conexiones entrantes nuevas a un puerto TCP desde otros
+dispositivos, o activar el firewall con modo sigiloso, siempre tras el aviso de
+administrador de macOS. No detiene procesos, no pone archivos en cuarentena ni detecta
+robo de datos por puertos que no bloquees. Si el requisito es “impedir que los agentes
+de mi colega roben datos”, esta versión solo lo cubre para los puertos que bloquees.
 
 Use this guide to measure what works and expose missing protection. A quiet dashboard
 or `no_finding` result never establishes that the machine is safe. Existing historical
@@ -97,7 +100,7 @@ Expected results:
 | File retrieval | The fake marker is returned, and the server logs a successful GET. This demonstrates that Arkangel does not prevent retrieval. |
 | Request visibility | No expectation of an HTTP-request, file-read, or exfiltration event: those are not collected. |
 | AI investigation | Review citations, competing explanations, and limitations. A Python listener alone is not proof of an attack. |
-| Remediation | Any suggested action remains a proposal, labeled **Not applied** in the app. |
+| Remediación | El puerto 8765 escucha solo en loopback, así que no aparece en **Exposición de red** ni se puede proponer bloquearlo. Las demás propuestas quedan marcadas **No aplicada**. |
 
 If the listener is missing, check coverage, the server's continued operation, and
 scan time before judging the model. Investigations and the timeline each expose at
@@ -153,10 +156,13 @@ runs; report misses and false alarms as well as successes.
   truth. Findings must cite inspected evidence, acknowledge missing visibility, and
   avoid claiming an attack or safety without support. Inconclusive is honest but
   does not satisfy a detection requirement.
-- **Prevention is not implemented.** A finding, proposal, failed attacker attempt,
-  or human stopping the server is not proof Arkangel blocked anything. Future
-  prevention acceptance needs an implemented enforcement path and independent
-  evidence that it blocks dummy-data access while legitimate traffic still works.
+- **La prevención pasa** solo con evidencia independiente: con el servidor del
+  laboratorio enlazado a la IP de laboratorio, aparece en **Exposición de red**;
+  pulsas **Bloquear desde la red** y apruebas con tu contraseña; la solicitud del
+  colega desde otro equipo falla por tiempo de espera, mientras `curl` desde este Mac
+  a esa misma IP sigue funcionando. Después pulsa **Desbloquear** y confirma que el
+  acceso remoto vuelve. Un hallazgo, una propuesta o un intento fallido del atacante,
+  por sí solos, no prueban que Arkangel bloqueara nada.
 - **Recovery passes** when you stop the demo server and attacker agents, verify the
   test listener is closed, and check your legitimate services still behave normally.
   Quit Arkangel to stop its app-owned service; stop a manually launched foreground

@@ -33,6 +33,18 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(len(items), 2)
         self.assertEqual(items[1]["attributes"]["local_address"], "[::1]:8081")
 
+    def test_listener_exposure_scope_and_port(self):
+        items = telemetry.parse_listeners("p1\ncnode\nn*:3000\nn127.0.0.1:5173\nn[::1]:631\nn192.168.1.5:8080\n")
+        self.assertEqual([(i["attributes"]["port"], i["attributes"]["bind_scope"]) for i in items],
+                         [(3000, "any"), (5173, "loopback"), (631, "loopback"), (8080, "interface")])
+
+    def test_firewall_state(self):
+        off = telemetry.parse_firewall("Firewall is disabled. (State = 0)\nFirewall stealth mode is off\n")
+        on = telemetry.parse_firewall("Firewall is enabled. (State = 1)\nFirewall stealth mode is on\n")
+        self.assertEqual(off[0]["attributes"], {"firewall_enabled": False, "stealth_mode": False})
+        self.assertEqual(on[0]["attributes"], {"firewall_enabled": True, "stealth_mode": True})
+        self.assertEqual(telemetry.parse_firewall(""), [])
+
     def test_plist_secret_fields_are_not_returned(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
@@ -74,8 +86,9 @@ class TelemetryTests(unittest.TestCase):
         with patch.object(telemetry.platform, "system", return_value="Darwin"), patch.object(telemetry.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")) as run, patch.object(telemetry, "_launch_agents", return_value=([], {"source": "user_launch_agents", "status": "partial", "detail": "fixture"})), patch.object(telemetry.shutil, "which", return_value=None):
             items, coverage = telemetry.collect_snapshot()
         self.assertEqual(items, [])
-        self.assertEqual(len(coverage), 4)
-        self.assertEqual([call.args[0] for call in run.call_args_list], [telemetry.PS_COMMAND, telemetry.LSOF_COMMAND])
+        self.assertEqual(len(coverage), 5)
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [telemetry.PS_COMMAND, telemetry.LSOF_COMMAND, telemetry.FIREWALL_COMMAND])
         self.assertTrue(all(call.kwargs["shell"] is False for call in run.call_args_list))
 
 

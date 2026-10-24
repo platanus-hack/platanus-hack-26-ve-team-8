@@ -13,7 +13,10 @@ counterevidence, limitations, descripciones de acciones) se escribe en español.
 clientes traducen los valores enumerados solo al mostrarlos.
 
 Métodos:
-- status -> {"monitoring":bool,"provider":str,"coverage":[{"source":str,"status":str,"detail":str}],"observation_count":int,"last_scan":str|null,"onboarding_required":bool,"sdk_available":bool}
+- status -> {"monitoring":bool,"provider":str,"coverage":[{"source":str,"status":str,"detail":str}],"observation_count":int,"last_scan":str|null,"onboarding_required":bool,"sdk_available":bool,
+  "firewall":{"firewall_enabled":bool,"stealth_mode":bool}|null,
+  "exposed":[{"port":int,"executable":str,"bind_scope":"any"|"interface","blocked":bool}],
+  "blocked_ports":[int]}
 - provider.configure -> status (params api_key string, allow_cloud true). La
   configuración inicial, iniciada por el usuario, comprueba la disponibilidad del SDK y
   después valida la clave y el modelo con un GET a la API Models de Anthropic. Sin
@@ -24,6 +27,10 @@ Métodos:
 - investigations -> {"items":[Investigation]}
 - scan -> status (instantánea local explícita de solo lectura)
 - investigate -> Investigation (params question opcional; usa la evidencia registrada)
+- defense.apply -> status (params action "block_port"|"unblock_port"|"enable_firewall",
+  port int 1-65535 para las acciones de puerto). Muestra el aviso de administrador de
+  macOS y espera al usuario; si cancela, devuelve un error y no cambia nada. No existen
+  acciones para permitir o abrir acceso.
 - monitoring.set -> status (params enabled bool; solo afecta al ciclo de vida del servicio en primer plano)
 - investigation.progress -> {"active":bool,"started_at":str|null,"steps":[{"tool":str,"summary":str,
   "evidence_ids":[str]}]} (última investigación, incluida una iniciada por --watch; consultar periódicamente mientras esté activa)
@@ -33,11 +40,15 @@ Observation: {"id":str,"timestamp":str ISO8601 UTC,"kind":str,
 Investigation: {"id":str,"created_at":str,"status":str,"title":str,
 "summary":str,"hypotheses":[{"statement":str,"status":str,
 "evidence_ids":[str],"counterevidence":str}],"steps":[{"tool":str,
-"summary":str}],"proposed_actions":[{"title":str,"description":str}],
+"summary":str}],"proposed_actions":[{"title":str,"description":str,
+"action"?:{"type":"block_port","port":int}|{"type":"enable_firewall"}}],
 "limitations":[str]}.
 Ejemplos de status: inconclusive, needs_review, no_finding. Ningún número de confianza
-implica seguridad. No existe ningún endpoint para ejecutar remediaciones. La interfaz
-marca las acciones como propuestas, no como correcciones aplicadas.
+implica seguridad. La action de una propuesta solo se conserva si es válida; block_port
+debe nombrar un puerto observado escuchando en una dirección que no sea loopback. Nada
+se aplica hasta que el usuario llama a defense.apply y lo aprueba. Los atributos de
+tcp_listener añaden bind_scope ("any"|"loopback"|"interface") y port; una observación
+firewall tiene firewall_enabled y stealth_mode.
 
 Cargas de ejemplo: fixtures.json. services/agent/tests/test_contract.py comprueba la
 salida de Python contra ese archivo; mantenlo sincronizado con los modelos de Swift en

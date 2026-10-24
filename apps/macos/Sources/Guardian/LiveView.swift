@@ -173,7 +173,7 @@ struct LiveView: View {
                         Text(action.description).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                     }
                     Spacer(minLength: 8)
-                    Pill("No aplicada", .secondary)
+                    ProposalStatus(action: action, model: model)
                 }
                 .padding(12)
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)

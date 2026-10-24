@@ -12,6 +12,7 @@ from xml.parsers.expat import ExpatError
 
 PS_COMMAND = ("/bin/ps", "-axo", "pid=,ppid=,uid=,lstart=,comm=")
 LSOF_COMMAND = ("/usr/sbin/lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn")
+FIREWALL_COMMAND = ("/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate", "--getstealthmode")
 
 
 def _observation(kind: str, source: str, entity: str, summary: str, attributes: dict) -> dict:
@@ -56,11 +57,28 @@ def parse_listeners(output: str) -> list[dict]:
         elif field == "c":
             executable = value.rsplit("/", 1)[-1]
         elif field == "n" and pid is not None:
+            host, _, port = value.rpartition(":")
+            host = host.strip("[]")
+            # "*" escucha en todas las interfaces, así que otros dispositivos de la red pueden conectarse.
+            scope = ("any" if host == "*" else
+                     "loopback" if host.startswith("127.") or host == "::1" or host == "localhost" else "interface")
+            attributes = {"pid": pid, "executable": executable, "local_address": value, "bind_scope": scope}
+            if port.isdigit():
+                attributes["port"] = int(port)
             observations.append(_observation("tcp_listener", "tcp_listeners", f"{pid}:{value}",
-                                            f"Escucha TCP de {executable}",
-                                            {"pid": pid, "executable": executable,
-                                             "local_address": value}))
+                                            f"Escucha TCP de {executable}", attributes))
     return observations
+
+
+def parse_firewall(output: str) -> list[dict]:
+    """Analiza el estado de socketfilterfw; State 1 es activado y 2 bloquea todo lo entrante."""
+    if "State = " not in output:
+        return []
+    enabled = "State = 0" not in output
+    stealth = "stealth mode is on" in output.lower()
+    return [_observation("firewall", "application_firewall", "application_firewall",
+                         f"Firewall de aplicaciones {'activado' if enabled else 'desactivado'}; modo sigiloso {'activado' if stealth else 'desactivado'}",
+                         {"firewall_enabled": enabled, "stealth_mode": stealth})]
 
 
 def _coverage(source: str, status: str, detail: str) -> dict:
@@ -141,13 +159,14 @@ def _launch_agents(directory: Path) -> tuple[list[dict], dict]:
 
 def collect_snapshot() -> tuple[list[dict], list[dict]]:
     """Inspecciona solo este Mac. Sin cambios, escaneos, shell, daemon ni estado almacenado."""
-    sources = ("processes", "tcp_listeners", "user_launch_agents")
+    sources = ("processes", "tcp_listeners", "application_firewall", "user_launch_agents")
     if platform.system() != "Darwin":
         return [], [_coverage(source, "unsupported", "Este recolector requiere macOS.") for source in sources]
     observations = []
     coverage = []
     for source, command, parser in (("processes", PS_COMMAND, parse_processes),
-                                    ("tcp_listeners", LSOF_COMMAND, parse_listeners)):
+                                    ("tcp_listeners", LSOF_COMMAND, parse_listeners),
+                                    ("application_firewall", FIREWALL_COMMAND, parse_firewall)):
         items, status = _command_snapshot(source, command, parser)
         observations.extend(items)
         coverage.append(status)

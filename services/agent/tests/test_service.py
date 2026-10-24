@@ -5,6 +5,7 @@ import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from guardian.service import GuardianService, Handler, Server
 from guardian.store import Store
@@ -83,6 +84,26 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.dispatch({"method": "observations", "params": {"limit": 99999}})
         self.assertTrue(self.service.dispatch({"method": "monitoring.set", "params": {"enabled": True}})["monitoring"])
+
+    def test_exposed_listeners_and_user_approved_block(self):
+        listener = {"id": "l1", "timestamp": datetime.now(timezone.utc).isoformat(), "kind": "tcp_listener",
+                    "source": "tcp_listeners", "entity": "9:*:3000", "summary": "TCP listener owned by node",
+                    "attributes": {"pid": 9, "executable": "node", "port": 3000, "bind_scope": "any"}}
+        local = dict(listener, id="l2", entity="9:127.0.0.1:5173",
+                     attributes={"pid": 9, "executable": "node", "port": 5173, "bind_scope": "loopback"})
+        self.service.collector = lambda: ([listener, local], self.coverage)
+        status = self.service.dispatch({"method": "scan"})
+        self.assertEqual(status["exposed"], [{"port": 3000, "executable": "node", "bind_scope": "any", "blocked": False}])
+        with patch("guardian.service.defense.block_port") as block:
+            status = self.service.dispatch({"method": "defense.apply", "params": {"action": "block_port", "port": 3000}})
+        block.assert_called_once_with(3000)
+        self.assertTrue(status["exposed"][0]["blocked"])
+        with patch("guardian.service.defense.unblock_port", side_effect=ValueError("Cancelado; no se cambió nada.")):
+            with self.assertRaises(ValueError):
+                self.service.dispatch({"method": "defense.apply", "params": {"action": "unblock_port", "port": 3000}})
+        self.assertEqual(self.service.status()["blocked_ports"], [3000])
+        with self.assertRaises(ValueError):
+            self.service.dispatch({"method": "defense.apply", "params": {"action": "open_port", "port": 22}})
 
     def test_concurrent_investigation_rejected(self):
         self.service.investigation_lock.acquire()

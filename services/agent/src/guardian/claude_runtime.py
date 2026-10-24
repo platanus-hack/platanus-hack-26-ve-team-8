@@ -28,7 +28,12 @@ INVESTIGATION_SCHEMA = {
             "required": ["statement", "status", "evidence_ids", "counterevidence"],
             "additionalProperties": False}},
         "proposed_actions": {"type": "array", "maxItems": 10, "items": {
-            "type": "object", "properties": {"title": {"type": "string"}, "description": {"type": "string"}},
+            "type": "object", "properties": {
+                "title": {"type": "string"}, "description": {"type": "string"},
+                "action": {"type": "object", "properties": {
+                    "type": {"type": "string", "enum": ["block_port", "enable_firewall"]},
+                    "port": {"type": "integer", "minimum": 1, "maximum": 65535}},
+                    "required": ["type"], "additionalProperties": False}},
             "required": ["title", "description"], "additionalProperties": False}},
         "limitations": {"type": "array", "items": {"type": "string"}, "maxItems": 20}},
     "required": ["status", "title", "summary", "hypotheses", "proposed_actions", "limitations"],

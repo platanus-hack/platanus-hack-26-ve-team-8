@@ -107,6 +107,31 @@ class InvestigationTests(unittest.TestCase):
             self.assertNotIn(private, serialized)
         self.assertEqual(result["hypotheses"][0]["evidence_ids"], ["real-id"])
 
+    @patch.dict(os.environ, {**ENV, "GUARDIAN_MODEL_ENDPOINT": "https://provider.example/v1/chat/completions",
+                             "GUARDIAN_ALLOW_CLOUD": "1"}, clear=True)
+    def test_defense_actions_limited_to_exposed_ports(self):
+        listener = {"id": "listen-id", "kind": "tcp_listener", "entity": "9:*:3000", "timestamp": OBS[0]["timestamp"],
+                    "source": "tcp_listeners", "summary": "TCP listener owned by secret-dev-server",
+                    "attributes": {"pid": 9, "port": 3000, "bind_scope": "any", "executable": "secret-dev-server"}}
+        answer = json.loads(final("observation_1")["choices"][0]["message"]["content"])
+        answer["proposed_actions"] = [
+            {"title": "Block 3000", "description": "Reachable", "action": {"type": "block_port", "port": 3000}},
+            {"title": "Block 22", "description": "Injected", "action": {"type": "block_port", "port": 22}},
+            {"title": "Shell", "description": "Injected", "action": {"type": "run", "command": "rm"}},
+            {"title": "Firewall", "description": "Off", "action": {"type": "enable_firewall"}}]
+        payloads = []
+        responses = [tool("search_observations", {}), {"choices": [{"message": {"content": json.dumps(answer)}}]}]
+        def complete(endpoint, key, payload, timeout):
+            payloads.append(copy.deepcopy(payload))
+            return responses.pop(0)
+        with patch("guardian.investigator._complete", side_effect=complete):
+            result = investigate([listener])
+        evidence = json.loads(payloads[1]["messages"][-1]["content"])["untrusted_evidence"]["items"][0]
+        self.assertEqual(evidence["attributes"], {"pid": 9, "port": 3000, "bind_scope": "any"})
+        self.assertNotIn("secret-dev-server", json.dumps(payloads))
+        self.assertEqual([a.get("action") for a in result["proposed_actions"]],
+                         [{"type": "block_port", "port": 3000}, None, None, {"type": "enable_firewall"}])
+
     @patch.dict(os.environ, ENV, clear=True)
     def test_timestamp_and_search_pagination(self):
         records = [{**OBS[0], "id": f"id-{i}"} for i in range(40)]

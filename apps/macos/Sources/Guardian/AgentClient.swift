@@ -15,6 +15,24 @@ struct AgentStatus: Decodable, Sendable {
     let last_scan: String?
     let onboarding_required: Bool?
     let sdk_available: Bool?
+    let firewall: FirewallState?
+    let exposed: [ExposedPort]?
+    let blocked_ports: [Int]?
+}
+struct FirewallState: Decodable, Sendable {
+    let firewall_enabled: Bool
+    let stealth_mode: Bool
+}
+struct ExposedPort: Decodable, Identifiable, Sendable {
+    var id: String { "\(port)-\(executable)-\(bind_scope)" }
+    let port: Int
+    let executable: String
+    let bind_scope: String
+    let blocked: Bool
+}
+struct DefenseAction: Decodable, Sendable {
+    let type: String
+    let port: Int?
 }
 enum JSONValue: Decodable, Sendable {
     case string(String), number(Double), boolean(Bool), object([String: JSONValue]), array([JSONValue]), null
@@ -64,6 +82,7 @@ struct InvestigationStep: Decodable, Sendable {
 struct ProposedAction: Decodable, Sendable {
     let title: String
     let description: String
+    let action: DefenseAction?
 }
 struct Investigation: Decodable, Identifiable, Sendable {
     let id: String
@@ -121,6 +140,11 @@ struct AgentClient: Sendable {
     func investigate(_ question: String) async throws -> Investigation {
         try await request("investigate", params: ["question": question])
     }
+    func applyDefense(_ action: String, port: Int?) async throws -> AgentStatus {
+        var params: [String: any Sendable] = ["action": action]
+        if let port { params["port"] = port }
+        return try await request("defense.apply", params: params)
+    }
 
     private func request<T: Decodable & Sendable>(_ method: String, params: [String: any Sendable] = [:]) async throws -> T {
         let socketPath = path
@@ -133,8 +157,10 @@ struct AgentClient: Sendable {
             // La E/S no bloqueante comparte un único plazo, incluidas la conexión y la respuesta.
             _ = fcntl(descriptor, F_SETFL, O_NONBLOCK)
             // Un escaneo puede esperar a uno de monitoreo en curso; cada uno ejecuta dos recolectores de 10 s.
+            // defense.apply espera al usuario en el aviso de administrador de macOS.
             let seconds: TimeInterval = switch method {
             case "investigate": 120
+            case "defense.apply": 150
             case "scan": 60
             case "provider.configure": 30
             default: 10

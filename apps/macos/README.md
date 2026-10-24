@@ -83,7 +83,9 @@ desde el menú sigue disponible.
 La línea de tiempo pide hasta 500 observaciones y muestra los atributos en texto plano,
 incluido el JSON anidado, en Metadatos registrados. Los hallazgos muestran hipótesis,
 contraevidencia, IDs de observaciones referenciadas, pasos de herramientas,
-limitaciones y acciones propuestas marcadas como No aplicada. El contenido registrado
+limitaciones y acciones propuestas. Una propuesta con una acción validada de bloquear
+puerto o activar el firewall ofrece un botón de aprobación que pide tu contraseña de
+administrador de macOS; las demás se marcan como No aplicada. El contenido registrado
 nunca se ejecuta como instrucciones. El estado desconectado es explícito; la evidencia
 cargada antes puede seguir visible. La falta de cobertura o de hallazgos nunca implica
 que este Mac sea seguro.
@@ -100,5 +102,5 @@ firmar. La app suprime stdout y stderr del proceso hijo; usa la CLI en primer pl
 documentada por separado para diagnósticos detallados del servicio. El lanzamiento de la
 interfaz, la validación con una clave real, la interacción con el Llavero y la
 inferencia de pago del modelo requieren una comprobación interactiva de extremo a
-extremo y no se ejecutaron durante la verificación del código fuente. No se ejecuta
-ninguna remediación.
+extremo y no se ejecutaron durante la verificación del código fuente. Ninguna
+remediación se ejecuta sin tu aprobación en el aviso de administrador de macOS.
