@@ -47,35 +47,44 @@ final class LocalRuntime {
 
     func start() throws {
         if ownsAgent { return }
+        let bundled = Bundle.main.bundleURL.pathExtension == "app"
         let root: URL
-        if let configured = ProcessInfo.processInfo.environment["GUARDIAN_REPO_ROOT"] {
-            root = URL(fileURLWithPath: configured, isDirectory: true)
+        let python: URL
+        if bundled {
+            guard let resources = Bundle.main.resourceURL else {
+                throw ClientError(message: "La instalación de Arkangel está incompleta. Reinstala la app.")
+            }
+            root = resources.appendingPathComponent("Python", isDirectory: true)
+            python = root.appendingPathComponent("bin/python3")
         } else {
-            // El código fuente está en apps/macos/Sources/Guardian/LocalRuntime.swift.
-            root = URL(fileURLWithPath: #filePath)
+            root = ProcessInfo.processInfo.environment["GUARDIAN_REPO_ROOT"].map {
+                URL(fileURLWithPath: $0, isDirectory: true)
+            } ?? URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent().deletingLastPathComponent()
                 .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            python = root.appendingPathComponent(".venv/bin/python")
         }
-        let python = root.appendingPathComponent(".venv/bin/python")
         guard FileManager.default.isExecutableFile(atPath: python.path) else {
-            throw ClientError(message: "Falta el entorno de Python. En el repositorio de Arkangel ejecuta: bash scripts/setup-agent.sh. Define GUARDIAN_REPO_ROOT si se movió este ejecutable. La app no instala dependencias.")
+            throw ClientError(message: bundled
+                ? "La instalación de Arkangel está incompleta. Reinstala la app para recuperar el agente incluido."
+                : "Falta el entorno de desarrollo. Ejecuta bash scripts/setup-agent.sh desde el repositorio o usa la app instalada.")
         }
         let child = Process()
         child.executableURL = python
-        child.arguments = ["-m", "guardian", "serve", "--watch"]
-        child.currentDirectoryURL = root
+        child.arguments = (bundled ? ["-I"] : []) + ["-m", "guardian", "serve", "--watch"]
+        child.currentDirectoryURL = bundled ? FileManager.default.homeDirectoryForCurrentUser : root
         var environment = ProcessInfo.processInfo.environment
         // Las credenciales del proveedor viajan solo en la solicitud configure del socket.
-        for name in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "GUARDIAN_MODEL_KEY", "GUARDIAN_ALLOW_CLOUD", "GUARDIAN_MODEL_ENDPOINT", "GUARDIAN_MODEL", "GUARDIAN_PROVIDER"] {
+        for name in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "GUARDIAN_MODEL_KEY", "GUARDIAN_ALLOW_CLOUD", "GUARDIAN_MODEL_ENDPOINT", "GUARDIAN_MODEL", "GUARDIAN_PROVIDER", "PYTHONHOME", "PYTHONPATH"] {
             environment.removeValue(forKey: name)
         }
-        environment["PYTHONPATH"] = root.appendingPathComponent("services/agent/src").path
+        if !bundled { environment["PYTHONPATH"] = root.appendingPathComponent("services/agent/src").path }
         child.environment = environment
         child.standardOutput = FileHandle.nullDevice
         child.standardError = FileHandle.nullDevice
         child.standardInput = FileHandle.nullDevice
         do { try child.run() } catch {
-            throw ClientError(message: "No se pudo iniciar Arkangel. Revisa GUARDIAN_REPO_ROOT y el entorno de Python del repositorio.")
+            throw ClientError(message: "No se pudo iniciar el agente de Arkangel. Reinicia la app; si el problema continúa, reinstálala.")
         }
         process = child
     }
@@ -94,6 +103,12 @@ final class GuardianAppDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Unbundled executables launched by swift run default to background-only apps.
         NSApplication.shared.setActivationPolicy(.regular)
+        if Bundle.main.bundleURL.pathExtension != "app" {
+            let icon = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Icon/AppIcon.icns")
+            NSApplication.shared.applicationIconImage = NSImage(contentsOf: icon)
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
