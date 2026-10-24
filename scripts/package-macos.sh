@@ -14,10 +14,12 @@ root = Path(os.environ['GUARDIAN_PACKAGE_ROOT'])
 contents = root / '.guardian/Guardian.app/Contents'
 (contents / 'MacOS').mkdir(parents=True, exist_ok=True)
 shutil.copy2(root / 'apps/macos/.build/debug/Guardian', contents / 'MacOS/Guardian')
+(contents / 'Resources').mkdir(exist_ok=True)
+shutil.copy2(root / 'apps/macos/Icon/AppIcon.icns', contents / 'Resources/AppIcon.icns')
 with (contents / 'Info.plist').open('wb') as stream:
     plistlib.dump({
         'CFBundleExecutable': 'Guardian', 'CFBundleIdentifier': 'local.guardian.app',
-        'CFBundleName': 'Guardian', 'CFBundlePackageType': 'APPL',
+        'CFBundleName': 'Guardian', 'CFBundlePackageType': 'APPL', 'CFBundleIconFile': 'AppIcon',
         'CFBundleVersion': '2', 'CFBundleShortVersionString': '0.2.0',
         'LSMinimumSystemVersion': '15.0', 'NSHighResolutionCapable': True,
     }, stream)
