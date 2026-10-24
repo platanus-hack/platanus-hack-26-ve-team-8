@@ -51,6 +51,10 @@ open .guardian/Arkangel.app
 bash scripts/build-dmg.sh
 ```
 
+El fondo del instalador se genera con `swift scripts/make-dmg-background.swift`.
+Las posiciones de los iconos se definen en `scripts/build-dmg.sh`; el fondo deja
+espacio para las etiquetas nativas de Finder.
+
 Para publicarlo en la web, sube el DMG como release; el botón de descarga apunta a
 `releases/latest/download/Arkangel.dmg`, así que conserva ese nombre de archivo:
 
