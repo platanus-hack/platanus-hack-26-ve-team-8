@@ -44,7 +44,7 @@ struct Dashboard: View {
             sidebar
         } detail: {
             ScrollView {
-                VStack(alignment: .leading, spacing: page == .overview ? 16 : 28) {
+                VStack(alignment: .leading, spacing: 20) {
                     if let error = model.error, model.status != nil && !model.setupVisible { errorBanner(error) }
                     workspaceHeader
                     if model.status == nil {
@@ -60,20 +60,14 @@ struct Dashboard: View {
                         }
                     }
                 }
-                .padding(page == .overview ? 24 : 36)
-                .frame(maxWidth: 1400, alignment: .leading)
+                .padding(24)
+                .frame(maxWidth: 1200, alignment: .leading)
                 .frame(maxWidth: .infinity)
                 .animation(.snappy, value: model.error)
                 .animation(.snappy, value: model.status == nil)
             }
-            .background {
-                ZStack(alignment: .topTrailing) {
-                    Color.canvas
-                    Circle().fill(Color.info.opacity(0.055)).frame(width: 480, height: 480).blur(radius: 100).offset(x: 180, y: -220)
-                }.ignoresSafeArea()
-            }
+            .background(Color.canvas.ignoresSafeArea())
             .navigationTitle(page.rawValue)
-
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     if model.busy || model.investigating { ProgressView().controlSize(.small) }
@@ -126,130 +120,76 @@ struct Dashboard: View {
     // MARK: Sidebar
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        List(selection: $selection) {
+            Section("Espacio de trabajo") {
+                ForEach([Page.overview, .live, .alerts]) { navItem($0) }
+            }
+            Section("Evidencia") {
+                ForEach([Page.observations, .investigations]) { navItem($0) }
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 10) {
-                BrandMark(size: 40)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Arkangel").font(.system(size: 25, weight: .medium, design: .serif))
+                BrandMark(size: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Arkangel").font(.headline)
                     Text("Investigador de este Mac").font(.caption).foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 0)
             }
-            .padding(.top, 12)
-            ScrollView {
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Divider()
                 VStack(alignment: .leading, spacing: 6) {
-                    navGroup("ESPACIO DE TRABAJO", pages: [.overview, .live, .alerts])
-                    Text("EVIDENCIA").font(.system(size: 10, weight: .semibold)).tracking(1.4)
-                        .foregroundStyle(.secondary).padding(.top, 24).padding(.bottom, 6).padding(.leading, 12)
-                    ForEach([Page.observations, .investigations]) { navItem($0) }
-                }
-            }
-            Spacer(minLength: 0)
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    StatusDot(color: connection.color)
-                    Text(connection.title).font(.callout.weight(.medium))
-                }
-                Text(model.status?.monitoring == true ? "Recolección local de solo lectura" : "Tu evidencia permanece en este Mac")
-                    .font(.caption).foregroundStyle(.secondary)
-                Hairline()
-                Button { model.setupVisible = true } label: {
-                    HStack {
-                        Image(systemName: "slider.horizontal.3")
-                        Text("Configurar investigador")
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption2)
+                    HStack(spacing: 8) {
+                        StatusDot(color: connection.color)
+                        Text(connection.title).font(.callout.weight(.medium))
                     }
-                    .font(.callout).foregroundStyle(.secondary)
+                    Text(model.status?.monitoring == true ? "Recolección local de solo lectura" : "Tu evidencia permanece en este Mac")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Configurar investigador…") { model.setupVisible = true }
+                        .buttonStyle(.link).font(.caption).padding(.top, 2)
                 }
-                .buttonStyle(.plain)
+                .padding(16)
             }
-            .padding(14)
-            .arkGlass(radius: 18)
         }
-        .padding(20)
-        .background {
-            ZStack {
-                Color(red: 0.035, green: 0.075, blue: 0.12)
-                Circle().fill(Color.info.opacity(0.42)).frame(width: 280, height: 280).blur(radius: 85).offset(x: -100, y: -200)
-                Circle().fill(Color.teal.opacity(0.2)).frame(width: 280, height: 280).blur(radius: 80).offset(x: 120, y: 250)
-                Rectangle().fill(.ultraThinMaterial).opacity(0.3)
-            }.ignoresSafeArea()
-        }
-        .foregroundStyle(.white)
-        .environment(\.colorScheme, .dark)
-        .navigationSplitViewColumnWidth(min: 246, ideal: 264, max: 300)
-    }
-
-    private func navGroup(_ title: String, pages: [Page]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 10, weight: .semibold)).tracking(1.4)
-                .foregroundStyle(.secondary).padding(.leading, 12).padding(.bottom, 6)
-            ForEach(pages) { navItem($0) }
-        }
+        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
     }
 
     private func navItem(_ destination: Page) -> some View {
-        let selected = page == destination
         let count = destination == .alerts ? (model.status?.alerts?.unacknowledged ?? 0)
             : destination == .investigations ? model.investigations.count : 0
-        return Button { selection = destination } label: {
-            HStack(spacing: 12) {
-                Image(systemName: destination.symbol).font(.system(size: 15)).frame(width: 20)
-                    .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
-                Text(destination.rawValue).font(.system(size: 14, weight: selected ? .semibold : .regular))
-                Spacer()
-                if count > 0 {
-                    Text(count.formatted()).font(.caption2.weight(.semibold)).monospacedDigit()
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Color.info.opacity(0.14), in: Capsule())
-                }
-            }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background {
-                if selected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(.white.opacity(0.09))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(.white.opacity(0.1))
-                        }
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        return Label(destination.rawValue, systemImage: destination.symbol)
+            .badge(count)
+            .tag(destination)
     }
 
     private var workspaceHeader: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                if page != .overview {
-                    Text("TU MAC · ESPACIO LOCAL").font(.system(size: 10, weight: .semibold)).tracking(1.8).foregroundStyle(.secondary)
-                }
-                Text(page.rawValue).font(.system(size: page == .overview ? 28 : 36, weight: .medium, design: .serif))
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(page.rawValue).font(.title.weight(.semibold))
                 Text(page.subtitle).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
             HStack(spacing: 7) {
                 StatusDot(color: connection.color)
                 Text(model.restoringStartup ? "Reconectando" : model.status == nil ? "Sin conexión" : "Agente local")
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(.medium)).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .arkGlass(radius: 22)
         }
-        .padding(.bottom, 8)
     }
 
     private var welcome: some View {
-        VStack(alignment: .leading, spacing: 26) {
+        VStack(alignment: .leading, spacing: 24) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 36) {
-                    VStack(alignment: .leading, spacing: 30) { welcomeIntro; welcomeSteps }.frame(minWidth: 300)
-                    identityPanel.frame(width: 280)
+                HStack(alignment: .top, spacing: 40) {
+                    welcomeIntro.frame(maxWidth: 420, alignment: .leading)
+                    welcomeSteps.frame(minWidth: 280)
                 }
-                VStack(alignment: .leading, spacing: 28) { welcomeIntro; identityPanel; welcomeSteps }
+                VStack(alignment: .leading, spacing: 28) { welcomeIntro; welcomeSteps }
             }
             Hairline()
             if let localStartError { errorBanner(localStartError, dismiss: { self.localStartError = nil }) }
@@ -267,17 +207,11 @@ struct Dashboard: View {
     }
 
     private var welcomeIntro: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("UN POCO MÁS DE CLARIDAD.").font(.system(size: 10, weight: .semibold)).tracking(2).foregroundStyle(Color.info)
-            Text("Tu Mac,\nbajo una mirada atenta.").font(.system(size: 38, weight: .medium, design: .serif)).lineSpacing(1)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tu Mac, bajo una mirada atenta.").font(.largeTitle.weight(.semibold))
             Text("Empieza con vigilancia local. Conecta Claude cuando quieras investigar los cambios con ayuda de IA.")
                 .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private var identityPanel: some View {
-        AgentIdentityPanel(connected: model.status != nil, monitoring: model.status?.monitoring == true,
-                           investigating: model.investigating || model.progress?.active == true)
     }
 
     private var welcomeSteps: some View {
@@ -304,7 +238,7 @@ struct Dashboard: View {
     private func welcomeStep(_ number: String, _ title: String, _ detail: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Text(number).font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(Color.info)
-                .frame(width: 30, height: 30).background(Color.info.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                .frame(width: 30, height: 30).background(Color.info.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.headline)
                 Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -503,11 +437,11 @@ struct Dashboard: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(title).font(.caption).foregroundStyle(.secondary)
-                    Text(value).font(.system(size: 25, weight: .medium)).monospacedDigit().contentTransition(.numericText())
+                    Text(value).font(.title2.weight(.semibold)).monospacedDigit().contentTransition(.numericText())
                 }
                 Spacer(minLength: 0)
                 Image(systemName: symbol).font(.system(size: 18, weight: .light)).foregroundStyle(Color.info)
-            }.card(padding: 14).contentShape(RoundedRectangle(cornerRadius: 20))
+            }.card(padding: 14).contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }.buttonStyle(.plain).help("Abrir \(destination.rawValue)")
     }
 
@@ -592,7 +526,7 @@ struct Dashboard: View {
                         .font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                         .help(model.status.map { es($0.provider) } ?? "Sin conexión")
                 }
-            }.padding(16).frame(maxWidth: .infinity, alignment: .leading).arkGlass(radius: 20)
+            }.card(padding: 16)
             if let status = model.status {
                 VStack(alignment: .leading, spacing: 12) {
                     overviewSectionHeader("Red y cobertura", action: "Detalles") { overviewDetail = .network }
@@ -690,7 +624,7 @@ struct Dashboard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.caption).foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 26, weight: .medium).monospacedDigit())
+                .font(.title.weight(.semibold).monospacedDigit())
                 .lineLimit(1).minimumScaleFactor(0.6)
                 .contentTransition(.numericText())
         }
@@ -702,7 +636,7 @@ struct Dashboard: View {
     private var investigatorInput: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Label("Pregunta al investigador", systemImage: "sparkles").font(.system(size: 20, weight: .medium, design: .serif))
+                Label("Pregunta al investigador", systemImage: "sparkles").font(.title3.weight(.semibold))
                 Text("Usa la evidencia local registrada y el proveedor de modelo configurado en el agente.")
                     .font(.callout).foregroundStyle(.secondary)
             }
@@ -724,9 +658,7 @@ struct Dashboard: View {
                 .disabled(model.busy || model.investigating || model.status == nil || model.status?.onboarding_required == true)
             }
         }
-        .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .arkGlass(radius: 22)
+        .card(padding: 20)
     }
 
     @ViewBuilder private var suggestionButtons: some View {
@@ -757,9 +689,9 @@ struct Dashboard: View {
                     VStack(spacing: 12) {
                         Image(systemName: model.alerts.isEmpty ? "tray" : "checkmark.circle")
                             .font(.system(size: 28, weight: .light)).foregroundStyle(Color.info)
-                            .frame(width: 58, height: 58).background(Color.info.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+                            .frame(width: 56, height: 56).background(Color.info.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         Text(model.alerts.isEmpty ? "Aún no hay señales" : "No quedan señales sin revisar")
-                            .font(.system(size: 22, weight: .medium, design: .serif))
+                            .font(.title3.weight(.semibold))
                         Text(model.alerts.isEmpty
                              ? (model.status?.monitoring == true ? "Los cambios detectados aparecerán aquí con su evidencia." : "Activa la vigilancia para registrar nuevos cambios. La evidencia anterior se conserva.")
                              : "Puedes desactivar el filtro para consultar las señales ya revisadas.")
@@ -780,7 +712,7 @@ struct Dashboard: View {
 
     private var signalInboxTitle: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Bandeja de señales").font(.system(size: 22, weight: .medium, design: .serif))
+            Text("Bandeja de señales").font(.title3.weight(.semibold))
             Text("Un cambio es un motivo para revisar, no una confirmación de compromiso.")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -810,7 +742,7 @@ struct Dashboard: View {
             Image(systemName: status.monitoring ? "waveform.path.ecg" : "pause")
                 .font(.system(size: 18)).foregroundStyle(status.monitoring ? Color.success : Color.warning)
                 .frame(width: 42, height: 42)
-                .background((status.monitoring ? Color.success : Color.warning).opacity(0.08), in: RoundedRectangle(cornerRadius: 13))
+                .background((status.monitoring ? Color.success : Color.warning).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text(status.monitoring ? "Vigilancia activa" : "Vigilancia en pausa").font(.headline)
                 Text(status.monitoring ? "Registrando cambios locales de solo lectura." : "No se están tomando nuevas instantáneas.")
@@ -1274,12 +1206,11 @@ private func rgb(_ hex: UInt32) -> NSColor {
 
 extension View {
     func card(padding: CGFloat = 16) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.surface, in: shape)
             .overlay(shape.strokeBorder(Color.hairline))
-            .shadow(color: .black.opacity(0.04), radius: 20, y: 6)
     }
 
     func inputField() -> some View {

@@ -125,10 +125,12 @@ final class GuardianModel {
     }
     let client = AgentClient()
 
+    // El sondeo de fondo no toca `busy`: alternarlo cada 5 s deshabilitaba todos los botones y hacía parpadear la interfaz.
+    private var refreshing = false
     func refresh() async {
-        guard !busy else { return }
-        busy = true
-        defer { busy = false }
+        guard !busy, !refreshing else { return }
+        refreshing = true
+        defer { refreshing = false }
         let version = investigationsVersion
         do {
             let newStatus = try await client.status()

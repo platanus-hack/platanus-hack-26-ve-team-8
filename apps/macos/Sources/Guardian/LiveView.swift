@@ -28,15 +28,15 @@ struct LiveView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("MAPA DE EVIDENCIA").font(.system(size: 9, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
+                    Text("Mapa de evidencia").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         StatusDot(color: headline.color)
-                        Text(headline.title).font(.system(size: 19, weight: .medium, design: .serif))
+                        Text(headline.title).font(.title3.weight(.semibold))
                     }
                     Text(headline.detail).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Text("\(sceneState.nodes.count) nodos").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                Text("\(sceneState.nodes.count) nodos").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             }.padding(20)
             DefenseSceneView(state: sceneState)
                 .frame(height: 310)
@@ -44,7 +44,7 @@ struct LiveView: View {
                 .accessibilityValue("\(sceneState.nodes.count) nodos; \(threats.count) señales pendientes")
                 .overlay(alignment: .bottomLeading) {
                     Label("Arrastra para girar · Desplaza para acercar", systemImage: "cursorarrow.motionlines")
-                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.45))
+                        .font(.caption2).foregroundStyle(.white.opacity(0.45))
                         .padding(.horizontal, 20).padding(.bottom, 12).allowsHitTesting(false)
                 }
             VStack(alignment: .leading, spacing: 12) {
@@ -53,7 +53,7 @@ struct LiveView: View {
                     VStack(alignment: .leading, spacing: 7) { sceneLegend }
                 }
                 Text("Dorado: evidencia citada · Coral: señales por revisar")
-                    .font(.system(size: 9)).foregroundStyle(.secondary)
+                    .font(.caption2).foregroundStyle(.secondary)
                 Hairline()
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) { liveActions }
@@ -63,8 +63,8 @@ struct LiveView: View {
                 .background(Color.white.opacity(0.025))
         }
         .background(Color(red: 0.025, green: 0.04, blue: 0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.1)))
         .environment(\.colorScheme, .dark)
     }
 
@@ -77,7 +77,7 @@ struct LiveView: View {
 
     private func legendItem(_ title: String, _ color: Color) -> some View {
         HStack(spacing: 5) { StatusDot(color: color); Text(title) }
-            .font(.system(size: 9)).foregroundStyle(.secondary)
+            .font(.caption2).foregroundStyle(.secondary)
     }
 
     private var activityPanel: some View {
