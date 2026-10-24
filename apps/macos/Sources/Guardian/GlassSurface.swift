@@ -72,16 +72,16 @@ extension Color {
     })
 }
 
-/// Low-contrast amber lighting behind the command center, with no hard color stops.
+/// Amber lighting around the existing orb; the gradient is decorative, never a status indicator.
 struct CommandAtmosphere: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                LinearGradient(colors: [Color(red: 0.055, green: 0.06, blue: 0.065), Color(red: 0.025, green: 0.03, blue: 0.035)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                LinearGradient(colors: [Color(red: 0.025, green: 0.022, blue: 0.02), Color(red: 0.006, green: 0.008, blue: 0.012)], startPoint: .top, endPoint: .bottom)
                 if !reduceTransparency {
-                    RadialGradient(colors: [Color(red: 0.6, green: 0.31, blue: 0.025).opacity(0.22), .clear], center: .bottomLeading, startRadius: 0, endRadius: max(geometry.size.width, geometry.size.height) * 0.8)
-                    RadialGradient(colors: [Color.commandAccent.opacity(0.055), .clear], center: UnitPoint(x: 0.56, y: 0.42), startRadius: 0, endRadius: geometry.size.width * 0.5)
+                    RadialGradient(colors: [Color(red: 0.95, green: 0.42, blue: 0.1).opacity(0.32), Color(red: 0.44, green: 0.19, blue: 0.04).opacity(0.12), .clear], center: UnitPoint(x: 0.5, y: -0.06), startRadius: 0, endRadius: geometry.size.width * 0.62)
+                    RadialGradient(colors: [Color(red: 1, green: 0.7, blue: 0.38).opacity(0.07), .clear], center: UnitPoint(x: 0.52, y: 0.38), startRadius: 0, endRadius: max(geometry.size.width, geometry.size.height) * 0.38)
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
         }.allowsHitTesting(false).accessibilityHidden(true)

@@ -5,10 +5,24 @@ struct TopAlertsPanel<Details: View>: View {
     @Bindable var model: GuardianModel
     let openSignals: () -> Void
     let showOrb: () -> Void
+    /// Which blocks to render; the Informes sidebar uses `.reportsOnly` because alerts sit under the orb and the composer is in the center.
+    var sections: Sections = .all
     @ViewBuilder let technicalDetails: (Investigation) -> Details
     @State private var expanded: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static var visibleCount: Int { 3 }
+
+    struct Sections: OptionSet {
+        let rawValue: Int
+        static var alerts: Sections { Sections(rawValue: 1 << 0) }
+        static var reports: Sections { Sections(rawValue: 1 << 1) }
+        static var ask: Sections { Sections(rawValue: 1 << 2) }
+        static var all: Sections { [.alerts, .reports, .ask] }
+        static var reportsOnly: Sections { [.reports] }
+    }
+
+    private var reportsOnly: Bool { sections == .reportsOnly }
 
     private var pending: [AgentAlert] {
         model.alerts.filter { !$0.acknowledged }.sorted {
@@ -18,12 +32,12 @@ struct TopAlertsPanel<Details: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 36) {
-            alertsSection
-            reportSection
-            askSection
+        VStack(alignment: .leading, spacing: reportsOnly ? 20 : 36) {
+            if sections.contains(.alerts) { alertsSection }
+            if sections.contains(.reports) { reportSection }
+            if sections.contains(.ask) { askSection }
         }
-        .animation(.snappy, value: pending.map(\.id))
+        .animation(reduceMotion ? nil : .snappy, value: pending.map(\.id))
     }
 
     // MARK: Alerts
@@ -34,7 +48,7 @@ struct TopAlertsPanel<Details: View>: View {
         return VStack(alignment: .leading, spacing: 16) {
             sectionHeader("Alertas principales") {
                 if !alerts.isEmpty {
-                    Text("\(shown.count) de \(alerts.count)").font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
+                    Text("\(shown.count) de \(alerts.count)").font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary)
                 }
             }
             if let featured = shown.first {
@@ -48,7 +62,7 @@ struct TopAlertsPanel<Details: View>: View {
             if !model.alerts.isEmpty {
                 Button(action: openSignals) {
                     HStack {
-                        Text(model.alerts.count == 1 ? "Ver la señal" : "Ver las \(model.alerts.count) señales")
+                        Text(model.alerts.count == 1 ? "Ver la alerta" : "Ver las \(model.alerts.count) alertas")
                         Spacer()
                         Image(systemName: "arrow.right")
                     }
@@ -64,11 +78,11 @@ struct TopAlertsPanel<Details: View>: View {
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Circle().fill(Color.danger).frame(width: 8, height: 8).shadow(color: .danger, radius: 4)
-                Text("REQUIERE TU ATENCIÓN").font(.system(size: 11, weight: .semibold)).tracking(1).foregroundStyle(Color.danger)
+                Text("Requiere tu atención").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.danger)
                 Spacer()
                 Text(relativeTime(alert.created_at)).font(.system(size: 12)).foregroundStyle(.secondary).help(fullTime(alert.created_at))
             }
-            Text(copy.title).font(.system(size: 18, weight: .semibold)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+            Text(copy.title).font(.system(size: 16, weight: .semibold)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
             Text(copy.detail).font(.system(size: 13)).lineSpacing(3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { featuredActions(alert, copy) }
@@ -156,7 +170,7 @@ struct TopAlertsPanel<Details: View>: View {
         }
         .padding(.vertical, 16)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
-        .animation(.snappy, value: open)
+        .animation(reduceMotion ? nil : .snappy, value: open)
     }
 
     @ViewBuilder private func statusIcon(_ alert: AgentAlert) -> some View {
@@ -189,9 +203,11 @@ struct TopAlertsPanel<Details: View>: View {
 
     private var reportSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Informe del investigador") {
-                if let report = model.investigations.first {
-                    Text(relativeTime(report.created_at)).font(.system(size: 12)).foregroundStyle(.secondary)
+            if !reportsOnly {
+                sectionHeader("Informe del investigador") {
+                    if let report = model.investigations.first {
+                        Text(relativeTime(report.created_at)).font(.system(size: 13)).foregroundStyle(.secondary)
+                    }
                 }
             }
             if model.investigating {
@@ -203,8 +219,17 @@ struct TopAlertsPanel<Details: View>: View {
             if let report = model.investigations.first {
                 reportCard(report)
             } else if !model.investigating {
-                Text("Todavía no hay informes. Pide una revisión más abajo y aquí verás qué encontró el investigador.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if reportsOnly {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Aún no hay informes").font(.system(size: 14, weight: .semibold))
+                        Text("Pregunta a Arkangel para crear uno.")
+                            .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                } else {
+                    Text("Todavía no hay informes. Pide una revisión más abajo y aquí verás qué encontró el investigador.")
+                        .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             if model.investigations.count > 1 {
                 DisclosureGroup {
@@ -222,7 +247,12 @@ struct TopAlertsPanel<Details: View>: View {
 
     private func reportCard(_ report: Investigation) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            verdict(report.status)
+            HStack(alignment: .firstTextBaseline) {
+                verdict(report.status)
+                Spacer(minLength: 8)
+                Text(relativeTime(report.created_at)).font(.system(size: 13)).foregroundStyle(.secondary)
+                    .help(fullTime(report.created_at))
+            }
             Text(briefReport(report.status))
                 .font(.system(size: 13)).lineSpacing(3).foregroundStyle(.secondary)
                 .lineLimit(3)
@@ -230,7 +260,7 @@ struct TopAlertsPanel<Details: View>: View {
                 fullReport(report).padding(.top, 12)
             } label: { technicalLabel }
         }
-        .padding(18)
+        .padding(reportsOnly ? 16 : 18)
         .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
         .textSelection(.enabled)
@@ -263,8 +293,8 @@ struct TopAlertsPanel<Details: View>: View {
                             Text(action.description).font(.system(size: 13)).lineSpacing(3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             ProposalStatus(action: action, model: model)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                        .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12)
+                        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
                     }
                 }
             }
@@ -284,7 +314,7 @@ struct TopAlertsPanel<Details: View>: View {
         case "inconclusive": ("Sin conclusión todavía", "questionmark.circle", .secondary)
         default: (humanize(status), "circle", .secondary)
         }
-        return Label(text, systemImage: symbol).font(.system(size: 12, weight: .medium)).foregroundStyle(color)
+        return Label(text, systemImage: symbol).font(.system(size: 13, weight: .medium)).foregroundStyle(color)
     }
 
     // MARK: Ask
@@ -315,7 +345,7 @@ struct TopAlertsPanel<Details: View>: View {
 
     private func sectionHeader<Trailing: View>(_ title: String, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title.uppercased()).font(.system(size: 12, weight: .medium)).tracking(1.6).foregroundStyle(.secondary)
+            Text(title).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
             Spacer()
             trailing()
         }

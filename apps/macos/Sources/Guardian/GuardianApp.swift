@@ -3,12 +3,12 @@ import UserNotifications
 
 // Los valores del protocolo siguen en inglés; solo se traducen al mostrarlos.
 private let spanishLabels = [
-    "file": "Archivo", "detection": "Señal", "user_launch_files": "Archivos LaunchAgents del usuario",
+    "file": "Archivo", "detection": "Alerta", "user_launch_files": "Archivos LaunchAgents del usuario",
     "system_launch_agents": "LaunchAgents del sistema", "system_launch_daemons": "LaunchDaemons del sistema",
     "shell_files": "Archivos de inicio del shell", "disabled": "Automatización desactivada",
     "paused": "Vigilancia en pausa", "provider_unavailable": "Proveedor no disponible",
     "cloud_disabled": "Procesamiento en la nube desactivado", "investigating": "Investigando",
-    "no_signals": "Sin señales pendientes", "quota_exhausted": "Límite de 24 horas alcanzado",
+    "no_signals": "Sin alertas pendientes", "quota_exhausted": "Límite de 24 horas alcanzado",
     "cooldown": "Esperando entre investigaciones", "ready": "Listo para investigar",
     "created": "Creado", "modified": "Modificado", "deleted": "Eliminado",
     "file_changed": "Cambio de archivo", "firewall_weakened": "Protección del firewall reducida",
@@ -271,14 +271,14 @@ final class GuardianModel {
         guard !notificationRequested else { return }
         notificationRequested = true
         guard Bundle.main.bundleIdentifier != nil else {
-            notificationDetail = "Las notificaciones de macOS no están disponibles en esta versión. Revisa las señales desde la barra de menús."
+            notificationDetail = "Las notificaciones de macOS no están disponibles en esta versión. Revisa las alertas desde la barra de menús."
             return
         }
         do {
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
-            notificationDetail = granted ? nil : "Notificaciones desactivadas; consulta las señales en la barra de menús."
+            notificationDetail = granted ? nil : "Notificaciones desactivadas; consulta las alertas en la barra de menús."
         } catch {
-            notificationDetail = "No se pudieron activar las notificaciones; las señales siguen en la barra de menús."
+            notificationDetail = "No se pudieron activar las notificaciones; las alertas siguen en la barra de menús."
         }
     }
 
@@ -296,20 +296,29 @@ final class GuardianModel {
         }
         guard canNotify else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Guardian detectó cambios que requieren revisión"
-        content.body = "Hay \(fresh.count) señales nuevas. Abre la app para revisar su evidencia."
+        content.title = "Guardian detectó alertas que requieren revisión"
+        content.body = "Hay \(fresh.count == 1 ? "1 alerta nueva" : "\(fresh.count) alertas nuevas"). Abre la app para revisar su evidencia."
         content.sound = .default
         do {
             try await center.add(UNNotificationRequest(identifier: "guardian-alerts", content: content, trigger: nil))
             notified.formUnion(fresh.map(\.id))
             UserDefaults.standard.set(Array(notified), forKey: "guardian.notifiedAlerts")
-        } catch { notificationDetail = "No se pudo enviar el aviso; consulta las señales en la app." }
+        } catch { notificationDetail = "No se pudo enviar el aviso; consulta las alertas en la app." }
     }
 
+    /// Unacknowledged alerts, most important first (AlertCopy.priority asc, then newest first).
+    var pendingAlerts: [AgentAlert] {
+        let ranked: [(alert: AgentAlert, priority: Int)] = alerts.filter { !$0.acknowledged }.map { ($0, AlertCopy($0).priority) }
+        return ranked.sorted { left, right in
+            left.priority != right.priority ? left.priority < right.priority : left.alert.created_at > right.alert.created_at
+        }.map(\.alert)
+    }
+
+    /// Observaciones de las alertas pendientes (con su tipo y clave reales) más los procesos nuevos frente a la referencia.
     var detections: [AgentObservation] {
         let baseline = baseline ?? []
         var seen = Set<String>()
-        return alerts.filter { !$0.acknowledged }.map(\.signal) + observations.filter {
+        return pendingAlerts.map(\.after).filter { seen.insert($0.key).inserted } + observations.filter {
             $0.kind == "process" && !baseline.contains($0.key) && seen.insert($0.key).inserted
         }
     }
@@ -351,9 +360,9 @@ struct GuardianApp: App {
     var body: some Scene {
         Window("Arkangel", id: "dashboard") {
             Dashboard(model: model)
-                .frame(minWidth: 860, minHeight: 620)
+                .frame(minWidth: 1000, minHeight: 620)
         }
-        .defaultSize(width: 1120, height: 760)
+        .defaultSize(width: 1220, height: 780)
         MenuBarExtra("Arkangel", systemImage: (model.status?.alerts?.unacknowledged ?? 0) > 0 ? "exclamationmark.shield" : model.status == nil ? "shield.slash" : "shield.lefthalf.filled") {
             GuardianMenu(model: model, showDashboard: appDelegate.showDashboard)
         }
@@ -373,14 +382,14 @@ struct GuardianMenu: View {
     var body: some View {
         Text(model.status == nil ? "Agente desconectado" : "Arkangel · Agente conectado")
         if let status = model.status {
-            Text(status.monitoring ? "Monitoreo activado" : "Monitoreo en pausa")
+            Text(status.monitoring ? "Vigilancia activa" : "Vigilancia en pausa")
             Text("\(status.observation_count) observaciones registradas")
-            Text("\(status.alerts?.unacknowledged ?? 0) señales sin revisar")
+            Text("\(status.alerts?.unacknowledged ?? 0) alertas sin revisar")
         }
         Divider()
         Button("Abrir Arkangel") { openDashboard() }
-        Button("Revisar señales") { model.showAlerts = true; openDashboard() }
-        Button("Configurar proveedor…") {
+        Button("Revisar alertas") { model.showAlerts = true; openDashboard() }
+        Button("Configurar investigador…") {
             model.setupVisible = true
             openDashboard()
         }

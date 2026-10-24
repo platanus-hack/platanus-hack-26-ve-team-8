@@ -1,78 +1,100 @@
 import SwiftUI
 
+/// Destinations other views can request; the shell maps each one to a page (and tab) of the app.
 enum Page: String, CaseIterable, Identifiable {
-    case alerts = "Señales", live = "En vivo", overview = "Estado del Mac", observations = "Observaciones", investigations = "Alertas principales"
+    case alerts = "Alertas", live = "En vivo", overview = "Protección", observations = "Observaciones", investigations = "Informes"
     var id: String { rawValue }
+}
+
+/// The three pages of the app, listed in the left sidebar.
+enum AppSection: String, CaseIterable, Identifiable {
+    case home, protection, activity
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .home: "Inicio"
+        case .protection: "Protección"
+        case .activity: "Actividad"
+        }
+    }
     var symbol: String {
         switch self {
-        case .alerts: "exclamationmark.shield"
-        case .live: "dot.radiowaves.left.and.right"
-        case .overview: "square.grid.2x2"
-        case .observations: "waveform.path.ecg"
-        case .investigations: "text.magnifyingglass"
+        case .home: "circle.hexagongrid"
+        case .protection: "shield.lefthalf.filled"
+        case .activity: "waveform.path.ecg"
         }
     }
-    var section: Page {
+    var key: KeyEquivalent {
         switch self {
-        case .overview: .overview
-        case .alerts, .observations: .alerts
-        case .live, .investigations: .live
+        case .home: "1"
+        case .protection: "2"
+        case .activity: "3"
         }
     }
-    var sectionTitle: String {
-        switch section {
-        case .overview: "Estado del Mac"
-        case .alerts: "Actividad"
-        default: "Investigador"
+}
+
+enum ActivityTab: String, CaseIterable, Identifiable {
+    case alerts, observations, live
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .alerts: "Alertas"
+        case .observations: "Observaciones"
+        case .live: "En vivo"
         }
     }
     var subtitle: String {
         switch self {
-        case .alerts: "Entiende qué cambió en tu Mac y decide qué revisar."
-        case .live: "Sigue los pasos del investigador y los cambios de este Mac."
-        case .overview: "Lo que está pasando en tu Mac, en un solo lugar."
+        case .alerts: "Qué cambió en tu Mac, la investigación automática y la respuesta de IA."
         case .observations: "Evidencia local registrada, tratada como no confiable."
-        case .investigations: "Lo más importante de tu Mac y qué hacer."
+        case .live: "Sigue los pasos del investigador y los cambios de este Mac."
         }
     }
 }
 
-private enum OverviewDetail: String, Identifiable {
-    case network, coverage
-    var id: String { rawValue }
+fileprivate extension Font {
+    static let pageTitle = Font.system(size: 22, weight: .semibold)
+    static let heading = Font.system(size: 17, weight: .semibold)
+    static let alertTitle = Font.system(size: 16, weight: .semibold)
+    static let bodyText = Font.system(size: 14)
+    static let label = Font.system(size: 13)
+    static let small = Font.system(size: 12)
+    static let mono = Font.system(size: 12, design: .monospaced)
 }
 
 struct Dashboard: View {
     @Bindable var model: GuardianModel
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @State private var selection: Page?
+    @State private var section: AppSection = .home
+    @State private var activityTab: ActivityTab = .alerts
     @State private var filter = ""
     @State private var kindFilter: String?
     @State private var localStartError: String?
     @State private var onlyUnreviewedAlerts = false
-    @State private var overviewDetail: OverviewDetail?
-    @State private var showProtection = false
-    private var page: Page { selection ?? .live }
-    private let suggestions = ["Explica las escuchas de red abiertas", "Revisa mis LaunchAgents"]
+    /// Only used when the window is too narrow to keep the Informes sidebar beside the orb.
+    @State private var reportsOpen = false
+    @State private var reportsScrollRequest = 0
+
+    private static let sidebarWidth: CGFloat = 180
+    private static let reportsWidth: CGFloat = 300
+    private static let centerMinWidth: CGFloat = 620
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .trailing) {
-                commandCenter
-                .disabled(selection != nil)
-                .accessibilityHidden(selection != nil)
-                if selection != nil {
-                    Color.black.opacity(0.65).ignoresSafeArea().onTapGesture { selection = nil }
-                    detailPanel
-                        .frame(width: min(page == .investigations ? 500 : 780, geometry.size.width - 24))
-                        .frame(maxHeight: .infinity)
-                        .background(Color.canvas)
-                        .overlay(alignment: .leading) { Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1) }
-                        .shadow(color: .black.opacity(0.5), radius: 30, x: -10)
-                        .accessibilityAddTraits(.isModal)
+            let reportsFit = geometry.size.width - Self.sidebarWidth - Self.reportsWidth - 2 >= Self.centerMinWidth
+            HStack(spacing: 0) {
+                sidebar(reportsFit: reportsFit).frame(width: Self.sidebarWidth)
+                VerticalHairline()
+                Group {
+                    switch section {
+                    case .home: home(reportsFit: reportsFit)
+                    case .protection: protectionPage
+                    case .activity: activityPage
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .background(Color.black)
         .environment(\.colorScheme, .dark)
         .tint(Color.commandAccent)
         .sheet(isPresented: $model.setupVisible, onDismiss: { model.apiKey = "" }) {
@@ -87,92 +109,247 @@ struct Dashboard: View {
             .background(Color.surface)
             .interactiveDismissDisabled(model.busy)
         }
-        .sheet(item: $overviewDetail) { detail in
-            VStack(spacing: 0) {
-                HStack {
-                    Text(detail == .network ? "Exposición de red" : "Cobertura de recolección").font(.title3.weight(.semibold))
-                    Spacer()
-                    Button("Cerrar", systemImage: "xmark") { overviewDetail = nil }
-                        .labelStyle(.iconOnly).buttonStyle(ArkButton(prominent: false))
-                        .keyboardShortcut(.cancelAction)
-                }.padding(22)
-                Hairline()
-                ScrollView {
-                    if let status = model.status {
-                        if detail == .network { exposure(status).padding(22) }
-                        else { coverageDetails(status).padding(22) }
-                    } else {
-                        ContentUnavailableView("Agente sin conexión", systemImage: "bolt.slash", description: Text("Reconecta el agente para consultar su estado actual."))
-                    }
+        .onChange(of: model.showAlerts, initial: true) { _, requested in
+            if requested { show(.alerts); model.showAlerts = false }
+        }
+    }
+
+    // MARK: Navigation
+
+    private func open(_ page: Page) {
+        switch page {
+        case .alerts: show(.alerts)
+        case .observations: show(.observations)
+        case .live: show(.live)
+        case .overview: section = .protection
+        case .investigations:
+            section = .home
+            reportsOpen = true
+            reportsScrollRequest += 1
+        }
+    }
+
+    private func show(_ tab: ActivityTab) {
+        activityTab = tab
+        section = .activity
+    }
+
+    private func inspect(_ evidenceID: String) {
+        filter = evidenceID
+        kindFilter = nil
+        show(.observations)
+    }
+
+    private func sidebar(reportsFit: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                BrandMark(size: 26)
+                Text("Arkangel").font(.heading).foregroundStyle(Color.commandAccent)
+            }
+            .padding(.horizontal, 10).padding(.bottom, 22)
+            .accessibilityElement(children: .combine)
+            ForEach(AppSection.allCases) { item in
+                navRow(item.title, symbol: item.symbol, selected: section == item) { section = item }
+                    .keyboardShortcut(item.key, modifiers: .command)
+                    .help("\(item.title) (⌘\(String(item.key.character)))")
+            }
+            if !reportsFit {
+                navRow("Informes", symbol: "doc.text.magnifyingglass", selected: section == .home && reportsOpen) {
+                    if section == .home { reportsOpen.toggle() } else { section = .home; reportsOpen = true }
+                }
+                .help("Mostrar u ocultar los informes del investigador")
+            }
+            Spacer(minLength: 16)
+            connectionLine.padding(.horizontal, 10).padding(.bottom, 8)
+            navRow("Configuración", symbol: "gearshape", selected: false) { model.setupVisible = true }
+                .help("Configurar investigador")
+        }
+        .padding(.horizontal, 12).padding(.top, 18).padding(.bottom, 14)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color.black)
+    }
+
+    private func navRow(_ title: String, symbol: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).font(.system(size: 14))
+                    .foregroundStyle(selected ? Color.commandAccent : Color.secondary)
+                    .frame(width: 18)
+                Text(title).font(.system(size: 14, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10).frame(height: 34)
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+                if selected {
+                    shape.fill(LinearGradient(colors: [Color.commandAccent.opacity(0.16), Color.white.opacity(0.04)], startPoint: .leading, endPoint: .trailing))
+                        .overlay(shape.strokeBorder(Color.white.opacity(0.08)))
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(Color.commandAccent).frame(width: 3, height: 16)
+                                .shadow(color: Color.commandAccent.opacity(0.8), radius: 4).offset(x: -1)
+                        }
                 }
             }
-            .frame(width: 640, height: 500).background(Color.canvas)
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
-        .onChange(of: model.showAlerts, initial: true) { _, requested in
-            if requested { selection = .alerts; model.showAlerts = false }
+        .buttonStyle(NavRowHoverStyle(selected: selected))
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var connectionLine: some View {
+        let state = connection
+        return HStack(spacing: 8) {
+            StatusDot(color: state.color)
+            Text(state.title).font(.label).foregroundStyle(.secondary).lineLimit(1)
         }
+        .help(state.detail)
+        .accessibilityElement(children: .combine)
     }
 
-    private var commandCenter: some View {
-        CommandCenter(model: model, open: { showProtection = false; selection = $0 }, configure: { model.setupVisible = true }, protect: { showProtection = true; selection = .overview }, inspect: { observation in
-                    filter = observation.id
-                    kindFilter = nil
-                    selection = .observations
-                })
+    private var connection: (title: String, detail: String, color: Color) {
+        guard let status = model.status else {
+            if model.restoringStartup { return ("Reconectando…", "Restaurando tu conexión guardada.", .secondary) }
+            return ("Agente sin conexión", "Inicia la vigilancia local desde Protección. La evidencia cargada antes puede seguir visible.", .secondary)
+        }
+        return status.monitoring
+            ? ("Vigilando este Mac", "Se están registrando instantáneas periódicas de solo lectura.", .success)
+            : ("Vigilancia en pausa", "Las instantáneas están en pausa. La evidencia registrada sigue disponible.", .warning)
     }
 
-    private var panelTitle: String {
-        if showProtection && page == .overview { return "Acciones de protección" }
-        if page == .investigations { return "Tu seguridad" }
-        return page == .live ? "Sucesos de la investigación" : page.rawValue
-    }
+    // MARK: Inicio
 
-    private var protectionPanel: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Revisa cada acción antes de aplicarla. Cada botón solicita su propia aprobación de administrador de macOS.")
-                .font(.callout).foregroundStyle(.secondary)
-            if let status = model.status {
-                exposure(status)
-                DisclosureGroup("Cobertura y limitaciones") { coverageDetails(status).padding(.top, 12) }
+    private func home(reportsFit: Bool) -> some View {
+        HStack(spacing: 0) {
+            CommandCenter(model: model, open: { open($0) }, protect: { section = .protection }, inspect: { inspect($0.id) })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .trailing) {
+                    if !reportsFit && reportsOpen {
+                        HStack(spacing: 0) {
+                            VerticalHairline()
+                            reportsSidebar(collapsible: true)
+                        }
+                        .frame(width: Self.reportsWidth)
+                        .shadow(color: .black.opacity(0.6), radius: 24, x: -8)
+                        .transition(.move(edge: .trailing))
+                    }
+                }
+            if reportsFit {
+                VerticalHairline()
+                reportsSidebar(collapsible: false).frame(width: Self.reportsWidth)
             }
         }
     }
 
-    private var detailPanel: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(panelTitle).font(.headline)
+    private func reportsSidebar(collapsible: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Informes").font(.heading)
+                if !model.investigations.isEmpty {
+                    Text(model.investigations.count.formatted()).font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(Color.commandAccent)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Color.commandAccent.opacity(0.12), in: Capsule())
+                        .alignmentGuide(.firstTextBaseline) { $0[.firstTextBaseline] + 1 }
+                }
                 Spacer()
-                Menu("Abrir") {
-                    Button("Señales y automatización") { selection = .alerts }
-                    Button("Registro de observaciones") { selection = .observations }
-                    Button("Alertas principales") { selection = .investigations }
-                    Button("Seguimiento en vivo") { selection = .live }
-                    Button("Estado y protección") { showProtection = false; selection = .overview }
-                    Button("Configurar investigador") { model.setupVisible = true }
-                }.menuStyle(.borderlessButton).fixedSize()
-                Button("Cerrar", systemImage: "xmark") { selection = nil }
-                    .labelStyle(.iconOnly).buttonStyle(CommandButton(prominent: false))
-                    .keyboardShortcut(.cancelAction)
-            }.padding(20)
+                if collapsible {
+                    // No Esc shortcut: the pinned orb card on Inicio already owns cancelAction.
+                    Button("Ocultar informes", systemImage: "xmark") { reportsOpen = false }
+                        .labelStyle(.iconOnly).buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 14)
+            Hairline()
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Color.clear.frame(height: 0).id("reportsTop")
+                        TopAlertsPanel(model: model, openSignals: { show(.alerts) }, showOrb: { section = .home }, sections: .reportsOnly) { report in
+                            investigationDetails(report)
+                        }
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .onChange(of: reportsScrollRequest) { _, _ in proxy.scrollTo("reportsTop", anchor: .top) }
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color.black)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Informes")
+    }
+
+    // MARK: Pages
+
+    private func pageHeading(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.pageTitle).accessibilityAddTraits(.isHeader)
+            Text(subtitle).font(.bodyText).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var protectionPage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 32) {
+                pageHeading("Protección", "Estado de este Mac, su exposición en la red y los controles de vigilancia.")
+                if let error = model.error { errorBanner(error) }
+                if let status = model.status {
+                    monitoringControls(status)
+                    exposure(status)
+                    coverageDetails(status)
+                    Label("La evidencia puede ser incompleta. Sin alertas no significa que el Mac sea seguro.", systemImage: "info.circle")
+                        .font(.label).foregroundStyle(.secondary)
+                } else {
+                    welcome
+                    Button("Actualizar", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
+                        .buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
+                        .help("Vuelve a consultar el estado del agente")
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 920, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var activityPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 20) { activityHeading; Spacer(minLength: 0); activityPicker }
+                VStack(alignment: .leading, spacing: 14) { activityHeading; activityPicker }
+            }
+            .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 18)
             Hairline()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let error = model.error { errorBanner(error) }
-                    if model.status == nil { welcome }
-                    switch page {
+                    switch activityTab {
                     case .alerts: alertList
                     case .observations: observationList
-                    case .investigations: investigationList
-                    case .overview:
-                        if showProtection { protectionPanel } else { overview }
                     case .live:
-                        LiveView(model: model, openActivity: { selection = .alerts }, openStatus: { selection = .overview }) { selection = .investigations }
+                        LiveView(model: model, openActivity: { show(.alerts) }, openStatus: { section = .protection }) { open(.investigations) }
                     }
-                }.padding(22)
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
+
+    private var activityHeading: some View { pageHeading("Actividad", activityTab.subtitle) }
+
+    private var activityPicker: some View {
+        Picker("Vista de actividad", selection: $activityTab) {
+            ForEach(ActivityTab.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented).labelsHidden().fixedSize()
+        .accessibilityLabel("Vista de actividad")
+    }
+
+    // MARK: Welcome
 
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -190,9 +367,9 @@ struct Dashboard: View {
                 VStack(alignment: .leading, spacing: 12) { welcomeActions }
             }
             Label("La vigilancia local funciona sin clave ni llamadas a modelos.", systemImage: "lock.shield")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.label).foregroundStyle(.secondary)
             if model.restoringStartup || model.busy {
-                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Preparando la conexión local…").font(.caption).foregroundStyle(.secondary) }
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Preparando la conexión local…").font(.label).foregroundStyle(.secondary) }
             }
         }
         .card(padding: 28)
@@ -202,14 +379,14 @@ struct Dashboard: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Tu Mac, bajo una mirada atenta.").font(.largeTitle.weight(.semibold))
             Text("Empieza con vigilancia local. Conecta Claude cuando quieras investigar los cambios con ayuda de IA.")
-                .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.bodyText).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var welcomeSteps: some View {
         VStack(alignment: .leading, spacing: 20) {
             welcomeStep("01", "Observa", "Procesos, escuchas de red y cambios en archivos seleccionados.")
-            welcomeStep("02", "Investiga", "Revisa señales y contrasta hipótesis con evidencia registrada.")
+            welcomeStep("02", "Investiga", "Revisa alertas y contrasta hipótesis con evidencia registrada.")
             welcomeStep("03", "Decide", "Cada acción de defensa requiere tu aprobación de macOS.")
         }
     }
@@ -229,53 +406,13 @@ struct Dashboard: View {
 
     private func welcomeStep(_ number: String, _ title: String, _ detail: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Text(number).font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(Color.info)
+            Text(number).font(.mono).foregroundStyle(Color.info)
                 .frame(width: 30, height: 30).background(Color.info.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline)
-                Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: 14, weight: .semibold))
+                Text(detail).font(.label).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    private var disconnectedNotice: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "bolt.slash").foregroundStyle(Color.warning)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Agente sin conexión").font(.callout.weight(.semibold))
-                Text("Los datos cargados son anteriores. Inicia la vigilancia desde el investigador para actualizar la evidencia.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Abrir investigador") { selection = .live }.buttonStyle(ArkButton(prominent: false))
-        }.card()
-    }
-
-    private var providerNotice: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "sparkles").foregroundStyle(Color.info)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Claude aún no está conectado").font(.callout.weight(.semibold))
-                Text("Puedes vigilar este Mac sin IA. Conecta Claude cuando quieras investigar las señales.").font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Conectar Claude") { model.setupVisible = true }.buttonStyle(ArkButton(prominent: false))
-        }.card()
-    }
-
-    private var connection: (title: String, detail: String, color: Color) {
-        guard let status = model.status else {
-            if model.restoringStartup { return ("Reconectando…", "Restaurando tu conexión guardada.", .secondary) }
-            return ("Agente desconectado", "Conectar inicia un agente en primer plano si hace falta. La evidencia cargada antes puede seguir visible.", .secondary)
-        }
-        if status.onboarding_required == true {
-            return status.monitoring
-                ? ("Vigilancia local activa", "Registrando evidencia en este Mac. Conecta Claude para activar las investigaciones.", .success)
-                : ("Vigilancia local en pausa", "Puedes reanudar la recolección sin conectar un proveedor de IA.", .warning)
-        }
-        return status.monitoring
-            ? ("Monitoreo activo", "Se están registrando instantáneas periódicas de solo lectura.", .success)
-            : ("Monitoreo en pausa", "Las instantáneas están en pausa. La evidencia registrada sigue disponible para revisar.", .warning)
     }
 
     // MARK: Shared pieces
@@ -284,10 +421,11 @@ struct Dashboard: View {
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         return HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.danger)
-            Text(message).font(.callout).textSelection(.enabled)
+            Text(message).font(.label).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button { model.error = nil; dismiss?() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain).foregroundStyle(.secondary).help("Descartar")
+                .accessibilityLabel("Descartar aviso")
         }
         .padding(12)
         .background(Color.danger.opacity(0.06), in: shape)
@@ -296,10 +434,10 @@ struct Dashboard: View {
     }
 
     private func section<Content: View>(_ title: String, _ detail: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
-                if let detail { Text(detail).font(.callout).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.heading).accessibilityAddTraits(.isHeader)
+                if let detail { Text(detail).font(.bodyText).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }
             content()
         }
@@ -325,23 +463,23 @@ struct Dashboard: View {
             if let error = model.error { errorBanner(error) }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Conecta tu investigador").font(.title2.weight(.semibold))
-                Text("Anthropic · Claude Haiku 5.5").font(.callout).foregroundStyle(.secondary)
+                Text("Anthropic · Claude Haiku 5.5").font(.label).foregroundStyle(.secondary)
             }
             Text("Arkangel incluye una clave de API de Anthropic de demostración: pulsa Conectar para activar las investigaciones. Opcionalmente, usa tu propia clave.")
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.bodyText).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             SecureField("Clave de API de Anthropic", text: $model.apiKey, prompt: Text("Clave de API de Anthropic (opcional; vacía usa la guardada o la de demostración)"))
-                .textFieldStyle(.plain).font(.system(.body, design: .monospaced))
+                .textFieldStyle(.plain).font(.system(size: 13, design: .monospaced))
                 .inputField()
                 .disabled(model.busy)
-            Text("Deja el campo vacío para reutilizar una clave guardada.").font(.caption).foregroundStyle(.secondary)
+            Text("Deja el campo vacío para reutilizar una clave guardada.").font(.small).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 assurance("lock", "Tu clave se guarda en el Llavero de macOS tras validarse. Una clave guardada nunca se muestra.")
                 assurance("hand.raised", "La vigilancia local funciona sin clave. Claude investiga cuando lo pides o cuando autorizas por separado las investigaciones automáticas.")
                 assurance("power", "Conectar puede iniciar el agente de Python de Arkangel en primer plano. Al salir se detiene el agente iniciado por esta app; un agente externo sigue activo.")
             }
             Toggle("Permito enviar a Anthropic metadatos minimizados de la telemetría local y entiendo que las investigaciones generan cargos de API.", isOn: $model.cloudConsent)
-                .toggleStyle(.checkbox).fixedSize(horizontal: false, vertical: true)
+                .toggleStyle(.checkbox).font(.label).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -367,277 +505,114 @@ struct Dashboard: View {
         } icon: {
             Image(systemName: symbol).frame(width: 16)
         }
-        .font(.callout).foregroundStyle(.secondary)
+        .font(.label).foregroundStyle(.secondary)
     }
 
-    // MARK: Overview
+    // MARK: Protección
 
-    private var overview: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let status = model.status {
-                compactMonitoring(status)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
-                    overviewMetric("Observaciones", status.observation_count.formatted(), symbol: "waveform.path.ecg", destination: .observations)
-                    overviewMetric("Señales sin revisar", (status.alerts?.unacknowledged ?? 0).formatted(), symbol: "exclamationmark.shield", destination: .alerts)
-                    overviewMetric("Investigaciones", model.investigations.count.formatted(), symbol: "text.magnifyingglass", destination: .investigations)
-                }
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 16) {
-                    overviewActivity.frame(minWidth: 370, maxWidth: .infinity)
-                    overviewControls.frame(minWidth: 300, idealWidth: 320, maxWidth: 360)
-                }
-                VStack(spacing: 14) { overviewActivity; overviewControls }
-            }
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "info.circle")
-                Text("La evidencia puede ser incompleta. Sin señales no significa que el Mac sea seguro.")
-            }.font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    private func compactMonitoring(_ status: AgentStatus) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) { compactMonitoringLabel(status); Spacer(); compactMonitoringActions(status) }
-            VStack(alignment: .leading, spacing: 12) { compactMonitoringLabel(status); compactMonitoringActions(status) }
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 16).fill(LinearGradient(colors: [Color.info.opacity(0.16), Color.info.opacity(0.045)], startPoint: .leading, endPoint: .trailing))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.info.opacity(0.16)))
-    }
-
-    private func compactMonitoringLabel(_ status: AgentStatus) -> some View {
-        HStack(spacing: 10) {
-            StatusDot(color: status.monitoring ? .success : .warning)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(status.monitoring ? "Vigilancia activa" : "Vigilancia en pausa").font(.callout.weight(.semibold))
-                Text(status.last_scan.map { "Última instantánea \(relativeTime($0))" } ?? "Esperando la primera instantánea")
-                    .font(.caption).foregroundStyle(.secondary).help(status.last_scan.map(fullTime) ?? "")
-            }
-        }
-    }
-
-    private func compactMonitoringActions(_ status: AgentStatus) -> some View {
-        HStack(spacing: 8) {
-            Button(status.monitoring ? "Pausar" : "Reanudar", systemImage: status.monitoring ? "pause" : "play.fill") {
-                Task { await model.perform("monitoring") }
-            }.buttonStyle(ArkButton(prominent: false))
-            Button("Tomar instantánea", systemImage: "camera.viewfinder") { Task { await model.perform("scan") } }
-                .buttonStyle(ArkButton(prominent: false))
-        }.disabled(model.busy)
-    }
-
-    private func overviewMetric(_ title: String, _ value: String, symbol: String, destination: Page) -> some View {
-        Button { selection = destination } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(.caption).foregroundStyle(.secondary)
-                    Text(value).font(.title2.weight(.semibold)).monospacedDigit().contentTransition(.numericText())
-                }
-                Spacer(minLength: 0)
-                Image(systemName: symbol).font(.system(size: 18, weight: .light)).foregroundStyle(Color.info)
-            }.card(padding: 14).contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }.buttonStyle(.plain).help("Abrir \(destination.rawValue)")
-    }
-
-    private var overviewActivity: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            overviewSectionHeader("Cambios por revisar", action: "Abrir actividad") { selection = .alerts }.padding(18)
-            let pending = model.alerts.filter { !$0.acknowledged }
-            if pending.isEmpty {
-                Label("No hay señales sin revisar en los datos cargados.", systemImage: "tray")
-                    .font(.callout).foregroundStyle(.secondary).padding(.horizontal, 18).padding(.bottom, 18)
-            }
-            ForEach(pending.prefix(2)) { alert in
-                Button { selection = .alerts } label: {
-                    WorkspaceActivityRow(symbol: "exclamationmark.shield", title: alert.reason, detail: "Sin revisar", timestamp: relativeTime(alert.created_at), color: .warning)
-                }.buttonStyle(.plain)
-            }
-            Hairline()
-            overviewSectionHeader("Actividad reciente", action: "Ver registro") { selection = .observations }.padding(18)
-            if model.observations.isEmpty {
-                workspaceEmpty("Aún no hay observaciones", detail: "Toma una instantánea para empezar a registrar la actividad de este Mac.", symbol: "tray")
-            }
-            ForEach(model.observations.prefix(5)) { item in
-                Button {
-                    filter = item.id
-                    kindFilter = nil
-                    selection = .observations
-                } label: {
-                    WorkspaceActivityRow(symbol: evidenceSymbol(item.kind), title: item.summary, detail: humanize(item.kind), timestamp: relativeTime(item.timestamp), color: .info)
-                }.buttonStyle(.plain).help("Inspeccionar esta observación")
-                Hairline().padding(.leading, 60)
-            }
-            if model.investigating || model.progress?.active == true {
+    /// The controls that used to live in the overflow menu: monitoring, snapshot, baseline and refresh.
+    private func monitoringControls(_ status: AgentStatus) -> some View {
+        section("Vigilancia") {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text("Investigación en curso").font(.callout)
-                    Spacer()
-                    Button("Ver pasos") { selection = .live }.buttonStyle(.plain).font(.caption).foregroundStyle(Color.info)
-                }.padding(18)
-            } else if let report = model.investigations.first {
-                overviewSectionHeader("Último informe", action: "Ver informes") { selection = .investigations }.padding(18)
-                Button { selection = .investigations } label: {
-                    WorkspaceActivityRow(symbol: "doc.text", title: report.title, detail: es(report.status), timestamp: relativeTime(report.created_at), color: toneColor(report.status))
-                }.buttonStyle(.plain)
-            }
-            Text("Las observaciones incluyen actividad normal; no son alertas por sí mismas.")
-                .font(.caption).foregroundStyle(.secondary).padding(18)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(EvidenceGlassSurface())
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func workspaceEmpty(_ title: String, detail: String, symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: symbol).font(.system(size: 24, weight: .light)).foregroundStyle(Color.info)
-            Text(title).font(.headline)
-            Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(24).frame(maxWidth: .infinity, minHeight: 190, alignment: .leading)
-    }
-
-    private func overviewSectionHeader(_ title: String, action: String, perform: @escaping () -> Void) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title).font(.callout.weight(.semibold))
-            Spacer(minLength: 0)
-            Button(action, action: perform).buttonStyle(.plain).font(.caption).foregroundStyle(Color.info)
-        }
-    }
-
-    private var overviewControls: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    Image(systemName: "text.magnifyingglass").foregroundStyle(Color.info)
-                        .frame(width: 32, height: 32).background(Color.info.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                    StatusDot(color: status.monitoring ? .success : .warning)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Investigar este Mac").font(.callout.weight(.semibold))
-                        Text(model.status?.onboarding_required == true ? "Proveedor sin conectar" : model.investigating ? "Investigación en curso" : "Consultas de solo lectura")
-                            .font(.caption).foregroundStyle(.secondary)
+                        Text(status.monitoring ? "Vigilancia activa" : "Vigilancia en pausa").font(.system(size: 14, weight: .semibold))
+                        Text(status.last_scan.map { "Última instantánea \(relativeTime($0))" } ?? "Esperando la primera instantánea")
+                            .font(.label).foregroundStyle(.secondary).help(status.last_scan.map(fullTime) ?? "")
                     }
                 }
-                if model.status?.onboarding_required == true {
-                    Text("La vigilancia local ya está disponible. Conecta Claude para investigar los cambios.").font(.callout).foregroundStyle(.secondary)
-                    Button("Conectar investigador") { model.setupVisible = true }.buttonStyle(ArkButton())
-                } else {
-                    TextField("¿Qué quieres entender de tu Mac?", text: $model.question, axis: .vertical)
-                        .textFieldStyle(.plain).lineLimit(2...3).inputField()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Empieza por una pregunta").font(.caption).foregroundStyle(.secondary)
-                        ForEach(suggestions, id: \.self) { suggestion in
-                            Button { model.question = suggestion } label: {
-                                HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: "arrow.turn.down.right").font(.caption)
-                                    Text(suggestion).font(.caption).multilineTextAlignment(.leading)
-                                }.foregroundStyle(Color.info)
-                            }.buttonStyle(.plain)
-                        }
-                    }
-                    HStack {
-                        Button("Proveedor") { model.setupVisible = true }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button(model.investigating ? "Investigando…" : "Investigar", systemImage: "arrow.up") {
-                            Task { await model.investigate() }
-                        }.buttonStyle(ArkButton()).disabled(model.busy || model.investigating || model.status == nil)
-                    }
+                Text("\(status.observation_count.formatted()) observaciones · \((status.alerts?.unacknowledged ?? 0).formatted()) alertas sin revisar · \(model.investigations.count.formatted()) informes")
+                    .font(.label).monospacedDigit().foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { monitoringButtons(status) }
+                    VStack(alignment: .leading, spacing: 8) { monitoringButtons(status) }
                 }
-            }.card(padding: 18)
-            if let status = model.status {
-                VStack(alignment: .leading, spacing: 14) {
-                    overviewSectionHeader("Red y protección", action: "Ampliar") { overviewDetail = .network }
-                    if let firewall = status.firewall {
-                        Label(firewall.firewall_enabled ? "Firewall activado" : "Firewall desactivado", systemImage: "shield.lefthalf.filled")
-                            .font(.callout).foregroundStyle(firewall.firewall_enabled ? Color.secondary : Color.warning)
-                        if !firewall.firewall_enabled || !firewall.stealth_mode {
-                            Button("Activar firewall y modo sigiloso") { Task { await model.defend("enable_firewall") } }
-                                .buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
-                        }
-                    } else { Text("Estado del firewall no disponible").font(.caption).foregroundStyle(.secondary) }
-                    let ports = status.exposed ?? []
-                    Text("\(ports.count) escuchas accesibles · \((status.blocked_ports ?? []).count) puertos bloqueados")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(ports.prefix(2)) { port in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Puerto \(port.port)").font(.caption.weight(.medium))
-                                Text(port.executable).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                            }
-                            Spacer(minLength: 0)
-                            Button(port.blocked ? "Desbloquear" : "Bloquear") {
-                                Task { await model.defend(port.blocked ? "unblock_port" : "block_port", port: port.port) }
-                            }.buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
-                        }
-                    }
-                    Text("Cada cambio requiere tu aprobación de administrador de macOS.").font(.caption2).foregroundStyle(.secondary)
-                    Hairline()
-                    DisclosureGroup("Cobertura de recolección") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(status.coverage) { item in
-                                HStack(alignment: .top) {
-                                    Text(humanize(item.source)).font(.caption)
-                                    Spacer()
-                                    Text(es(item.status)).font(.caption).foregroundStyle(toneColor(item.status))
-                                }.help(item.detail)
-                            }
-                            Button("Ver alcance y limitaciones") { overviewDetail = .coverage }.buttonStyle(.plain).font(.caption).foregroundStyle(Color.info)
-                        }.padding(.top, 10)
-                    }.font(.caption)
-                }.card(padding: 18)
+                Text(model.baselineDate.map { "Referencia de procesos tomada \($0.formatted(.relative(presentation: .named))). Los procesos nuevos se comparan con ella." }
+                     ?? "Renovar referencia marca los procesos actuales como conocidos; los que aparezcan después se resaltan como nuevos.")
+                    .font(.label).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            .card(padding: 20)
         }
+    }
+
+    @ViewBuilder private func monitoringButtons(_ status: AgentStatus) -> some View {
+        Button(status.monitoring ? "Pausar vigilancia" : "Reanudar vigilancia", systemImage: status.monitoring ? "pause" : "play.fill") {
+            Task { await model.perform("monitoring") }
+        }
+        .buttonStyle(ArkButton(prominent: !status.monitoring)).disabled(model.busy)
+        Button("Tomar instantánea", systemImage: "camera.viewfinder") { Task { await model.perform("scan") } }
+            .buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
+        Button("Renovar referencia", systemImage: "arrow.triangle.2.circlepath") { model.setBaseline() }
+            .buttonStyle(ArkButton(prominent: false)).disabled(model.observations.isEmpty)
+            .help("Marca los procesos observados ahora como conocidos")
+        Button("Actualizar", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
+            .buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
+            .help("Vuelve a consultar el estado del agente")
     }
 
     private func coverageDetails(_ status: AgentStatus) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Alcance de la última instantánea. La cobertura parcial limita las conclusiones.").font(.callout).foregroundStyle(.secondary)
-            if status.coverage.isEmpty { Text("No se informó cobertura.").foregroundStyle(.secondary) }
-            ForEach(status.coverage) { item in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack { Text(humanize(item.source)).font(.headline); Spacer(); Pill(item.status) }
-                    Text(item.detail).font(.callout).foregroundStyle(.secondary)
-                }.card()
+        section("Cobertura de recolección", "Alcance de la última instantánea. La cobertura parcial limita las conclusiones.") {
+            VStack(spacing: 0) {
+                if status.coverage.isEmpty {
+                    Text("No se informó cobertura.").font(.bodyText).foregroundStyle(.secondary).padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(Array(status.coverage.enumerated()), id: \.element.id) { index, item in
+                    if index > 0 { Hairline() }
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack { Text(humanize(item.source)).font(.system(size: 14, weight: .medium)); Spacer(); Pill(item.status) }
+                        Text(item.detail).font(.label).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+                }
             }
+            .card(padding: 0)
         }
     }
 
     private func exposure(_ status: AgentStatus) -> some View {
-        section("Exposición de red", "Puertos que otros dispositivos pueden alcanzar. Un bloqueo descarta sus conexiones nuevas; este Mac puede seguir usando el puerto hasta que lo desbloquees o reinicies.") {
+        section("Exposición de red", "Puertos que otros dispositivos pueden alcanzar. Un bloqueo descarta sus conexiones nuevas; este Mac puede seguir usando el puerto hasta que lo desbloquees o reinicies. Cada cambio requiere tu aprobación de administrador de macOS.") {
             VStack(spacing: 0) {
                 if let firewall = status.firewall {
                     let protected = firewall.firewall_enabled && firewall.stealth_mode
                     HStack(spacing: 12) {
-                        Image(systemName: protected ? "checkmark.shield" : "exclamationmark.shield").foregroundStyle(.secondary).frame(width: 16)
+                        Image(systemName: protected ? "checkmark.shield" : "exclamationmark.shield")
+                            .foregroundStyle(protected ? Color.secondary : Color.warning).frame(width: 16)
                         Text("Firewall \(firewall.firewall_enabled ? "activado" : "desactivado") · modo sigiloso \(firewall.stealth_mode ? "activado" : "desactivado")")
+                            .font(.bodyText)
                         Spacer(minLength: 12)
                         if !protected {
                             Button("Activar firewall y modo sigiloso") { Task { await model.defend("enable_firewall") } }
                                 .buttonStyle(ArkButton(prominent: false))
+                                .help("macOS te pedirá tu contraseña de administrador antes de cambiar nada.")
                         }
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
+                } else {
+                    Text("Estado del firewall no disponible").font(.bodyText).foregroundStyle(.secondary).padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 let exposed = status.exposed ?? []
                 if exposed.isEmpty {
                     Hairline()
-                    Text("No se vieron escuchas accesibles desde otros dispositivos.").foregroundStyle(.secondary).padding(14)
+                    Text("No se vieron escuchas accesibles desde otros dispositivos.").font(.bodyText).foregroundStyle(.secondary).padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 ForEach(exposed) { item in
                     Hairline()
                     HStack(spacing: 12) {
                         Image(systemName: "network").foregroundStyle(.secondary).frame(width: 16)
-                        Text("Puerto \(item.port)").fontWeight(.medium).monospacedDigit()
-                        Text("\(item.executable) · \(item.bind_scope == "any" ? "todas las interfaces" : "una interfaz")").foregroundStyle(.secondary)
+                        Text("Puerto \(item.port)").font(.system(size: 14, weight: .medium)).monospacedDigit()
+                        Text("\(item.executable) · \(item.bind_scope == "any" ? "todas las interfaces" : "una interfaz")")
+                            .font(.label).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 12)
                         if item.blocked { Pill("Bloqueado", .success) }
                         Button(item.blocked ? "Desbloquear" : "Bloquear desde la red") {
                             Task { await model.defend(item.blocked ? "unblock_port" : "block_port", port: item.port) }
                         }
                         .buttonStyle(ArkButton(prominent: !item.blocked))
+                        .accessibilityLabel(item.blocked ? "Desbloquear puerto \(item.port)" : "Bloquear puerto \(item.port) desde la red")
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
                 }
@@ -645,10 +620,11 @@ struct Dashboard: View {
                     Hairline()
                     HStack(spacing: 12) {
                         Image(systemName: "network.slash").foregroundStyle(.secondary).frame(width: 16)
-                        Text("Puerto \(port) bloqueado · sin escucha ahora").foregroundStyle(.secondary)
+                        Text("Puerto \(port) bloqueado · sin escucha ahora").font(.bodyText).foregroundStyle(.secondary)
                         Spacer(minLength: 12)
                         Button("Desbloquear") { Task { await model.defend("unblock_port", port: port) } }
                             .buttonStyle(ArkButton(prominent: false))
+                            .accessibilityLabel("Desbloquear puerto \(port)")
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
                 }
@@ -669,9 +645,11 @@ struct Dashboard: View {
         }
     }
 
+    // MARK: Actividad · Alertas
+
     private func metric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.label).foregroundStyle(.secondary)
             Text(value)
                 .font(.title.weight(.semibold).monospacedDigit())
                 .lineLimit(1).minimumScaleFactor(0.6)
@@ -703,39 +681,38 @@ struct Dashboard: View {
                 if visible.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: model.alerts.isEmpty ? "tray" : "checkmark.circle")
-                            .font(.system(size: 28, weight: .light)).foregroundStyle(Color.info)
-                            .frame(width: 56, height: 56).background(Color.info.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        Text(model.alerts.isEmpty ? "Aún no hay señales" : "No quedan señales sin revisar")
-                            .font(.title3.weight(.semibold))
+                            .font(.system(size: 28, weight: .light)).foregroundStyle(.secondary)
+                        Text(model.alerts.isEmpty ? "Aún no hay alertas" : "No quedan alertas sin revisar")
+                            .font(.heading)
                         Text(model.alerts.isEmpty
                              ? (model.status?.monitoring == true ? "Los cambios detectados aparecerán aquí con su evidencia." : "Activa la vigilancia para registrar nuevos cambios. La evidencia anterior se conserva.")
-                             : "Puedes desactivar el filtro para consultar las señales ya revisadas.")
-                            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
-                        Text("La ausencia de señales no garantiza que el Mac sea seguro.")
-                            .font(.caption).foregroundStyle(.secondary)
+                             : "Puedes desactivar el filtro para consultar las alertas ya revisadas.")
+                            .font(.bodyText).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+                        Text("La ausencia de alertas no garantiza que el Mac sea seguro.")
+                            .font(.label).foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 30).card(padding: 24)
                 }
                 LazyVStack(spacing: 14) {
                     ForEach(visible) { signalCard($0) }
                 }
-                Text("Hasta 500 señales · Historial de los últimos 7 días")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("Hasta 500 alertas · Historial de los últimos 7 días")
+                    .font(.label).foregroundStyle(.secondary)
             }
         }
     }
 
     private var signalInboxTitle: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Bandeja de señales").font(.title3.weight(.semibold))
+            Text("Bandeja de alertas").font(.heading).accessibilityAddTraits(.isHeader)
             Text("Un cambio es un motivo para revisar, no una confirmación de compromiso.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.label).foregroundStyle(.secondary)
         }
     }
 
     private var signalFilter: some View {
         Toggle("Solo sin revisar", isOn: $onlyUnreviewedAlerts)
-            .toggleStyle(.switch).controlSize(.small).fixedSize()
+            .toggleStyle(.switch).controlSize(.small).font(.label).fixedSize()
     }
 
     private func signalMonitoring(_ status: AgentStatus) -> some View {
@@ -748,7 +725,7 @@ struct Dashboard: View {
                 Image(systemName: "clock")
                 Text(status.last_file_scan.map { "Archivos revisados \(relativeTime($0))" } ?? "Esperando la primera revisión de archivos")
                     .help(status.last_file_scan.map(fullTime) ?? "")
-            }.font(.caption).foregroundStyle(.secondary)
+            }.font(.label).foregroundStyle(.secondary)
         }.card(padding: 22)
     }
 
@@ -756,12 +733,11 @@ struct Dashboard: View {
         HStack(spacing: 12) {
             Image(systemName: status.monitoring ? "waveform.path.ecg" : "pause")
                 .font(.system(size: 18)).foregroundStyle(status.monitoring ? Color.success : Color.warning)
-                .frame(width: 42, height: 42)
-                .background((status.monitoring ? Color.success : Color.warning).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 32)
             VStack(alignment: .leading, spacing: 4) {
-                Text(status.monitoring ? "Vigilancia activa" : "Vigilancia en pausa").font(.headline)
+                Text(status.monitoring ? "Vigilancia activa" : "Vigilancia en pausa").font(.system(size: 14, weight: .semibold))
                 Text(status.monitoring ? "Registrando cambios locales de solo lectura." : "No se están tomando nuevas instantáneas.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.label).foregroundStyle(.secondary)
             }
         }
     }
@@ -771,6 +747,7 @@ struct Dashboard: View {
             Task { await model.perform("monitoring") }
         }
         .buttonStyle(ArkButton(prominent: !status.monitoring)).disabled(model.busy)
+        .accessibilityLabel(status.monitoring ? "Pausar vigilancia" : "Reanudar vigilancia")
     }
 
     private func signalAutomation(_ automation: AutomationState) -> some View {
@@ -778,9 +755,9 @@ struct Dashboard: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "sparkles").foregroundStyle(Color.info).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Investigación automática").font(.headline)
-                    Text("Permite que el investigador revise las señales pendientes cuando el proveedor esté disponible.")
-                        .font(.callout).foregroundStyle(.secondary)
+                    Text("Investigación automática").font(.system(size: 14, weight: .semibold))
+                    Text("Permite que el investigador revise las alertas pendientes cuando el proveedor esté disponible.")
+                        .font(.label).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -788,7 +765,7 @@ struct Dashboard: View {
                 get: { model.status?.automation?.enabled ?? false },
                 set: { enabled in Task { await model.setAutomation(enabled) } }
             ))
-            .toggleStyle(.checkbox).fixedSize(horizontal: false, vertical: true).disabled(model.busy)
+            .toggleStyle(.checkbox).font(.label).fixedSize(horizontal: false, vertical: true).disabled(model.busy)
             Hairline()
             ViewThatFits(in: .horizontal) {
                 HStack { automationStatus(automation); Spacer(); automationQuota(automation) }
@@ -796,25 +773,25 @@ struct Dashboard: View {
             }
             DisclosureGroup("Límites y funcionamiento") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Solo investiga cuando hay señales pendientes: como máximo un intento cada 5 minutos y 12 en 24 horas. Los intentos fallidos también cuentan.")
+                    Text("Solo investiga cuando hay alertas pendientes: como máximo un intento cada 5 minutos y 12 en 24 horas. Los intentos fallidos también cuentan.")
                     Text("La cuota limita intentos, no el gasto. Las investigaciones manuales quedan fuera de estos límites.")
                     Text("Pausar la vigilancia impide nuevas investigaciones automáticas. Una que ya esté en curso puede terminar.")
                     if automation.cooldown_seconds > 0 {
                         Text("Próximo intento automático en al menos \(automation.cooldown_seconds) segundos, si se cumplen las demás condiciones.")
                     }
-                }.font(.caption).foregroundStyle(.secondary).padding(.top, 10)
-            }.font(.caption).foregroundStyle(.secondary)
+                }.font(.label).foregroundStyle(.secondary).padding(.top, 10)
+            }.font(.label).foregroundStyle(.secondary)
         }.card(padding: 22)
     }
 
     private func automationStatus(_ automation: AutomationState) -> some View {
         Label(es(automation.reason), systemImage: automation.enabled ? "bolt" : "bolt.slash")
-            .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            .font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
     }
 
     private func automationQuota(_ automation: AutomationState) -> some View {
         Text("\(automation.remaining) intentos disponibles / 24 h")
-            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            .font(.label.monospacedDigit()).foregroundStyle(.secondary)
     }
 
     private func signalCoverage(_ status: AgentStatus) -> some View {
@@ -834,50 +811,50 @@ struct Dashboard: View {
                     }
                 }
             }
-            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
+            .font(.label).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
         } label: {
             Label("Cobertura, notificaciones y funcionamiento", systemImage: "info.circle")
-                .font(.callout.weight(.medium))
+                .font(.system(size: 14, weight: .medium))
         }.card(padding: 18)
     }
 
     private func signalCard(_ alert: AgentAlert) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "exclamationmark.shield").foregroundStyle(alert.acknowledged ? Color.secondary : Color.warning)
+                Image(systemName: "exclamationmark.shield").foregroundStyle(alert.acknowledged ? Color.secondary : Color.danger)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(alert.reason).font(.headline)
-                    Text(relativeTime(alert.created_at)).font(.caption).foregroundStyle(.secondary).help(fullTime(alert.created_at))
+                    Text(alert.reason).font(.alertTitle).fixedSize(horizontal: false, vertical: true)
+                    Text(relativeTime(alert.created_at)).font(.label).foregroundStyle(.secondary).help(fullTime(alert.created_at))
                 }
                 Spacer()
-                Pill(alert.acknowledged ? "Revisada" : "Sin revisar", alert.acknowledged ? .secondary : .warning)
+                Pill(alert.acknowledged ? "Revisada" : "Sin revisar", alert.acknowledged ? .secondary : .danger)
             }
-            Text(alert.signal.entity).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+            Text(alert.signal.entity).font(.mono).foregroundStyle(.secondary)
                 .textSelection(.enabled).lineLimit(2).truncationMode(.middle)
             Label(alert.investigated ? "Investigación completada" : "Pendiente de investigación", systemImage: alert.investigated ? "text.magnifyingglass" : "clock")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.label).foregroundStyle(.secondary)
             DisclosureGroup("Comparar evidencia del cambio") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Antes").font(.caption.weight(.semibold))
+                    Text("Antes").font(.system(size: 13, weight: .semibold))
                     if let before = alert.before { observationRow(before) }
-                    else { Text("No hay evidencia anterior disponible.").font(.caption).foregroundStyle(.secondary) }
-                    Text("Después").font(.caption.weight(.semibold))
+                    else { Text("No hay evidencia anterior disponible.").font(.label).foregroundStyle(.secondary) }
+                    Text("Después").font(.system(size: 13, weight: .semibold))
                     observationRow(alert.after)
-                    Text("Señal registrada").font(.caption.weight(.semibold))
+                    Text("Evidencia de la alerta").font(.system(size: 13, weight: .semibold))
                     observationRow(alert.signal)
                 }.padding(.top, 12)
-            }.font(.callout)
+            }.font(.label)
             if !alert.acknowledged {
                 Button("Marcar como revisada", systemImage: "checkmark") { Task { await model.acknowledge(alert.id) } }
                     .buttonStyle(ArkButton(prominent: false)).disabled(model.busy)
             } else {
                 Text("Revisada. La evidencia se conserva y la investigación pendiente no se cancela.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.label).foregroundStyle(.secondary)
             }
         }.card(padding: 22)
     }
 
-    // MARK: Observations
+    // MARK: Actividad · Observaciones
 
     private var observationList: some View {
         let kinds = Set(model.observations.map(\.kind)).sorted()
@@ -892,13 +869,15 @@ struct Dashboard: View {
                     ForEach(kinds, id: \.self) { Text(humanize($0)).tag(String?.some($0)) }
                 }
                 .pickerStyle(.menu).labelsHidden().frame(maxWidth: 210)
+                .accessibilityLabel("Tipo de observación")
                 Spacer()
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Filtrar evidencia", text: $filter).textFieldStyle(.plain)
+                    TextField("Filtrar evidencia", text: $filter).textFieldStyle(.plain).font(.label)
                     if !filter.isEmpty {
                         Button { filter = "" } label: { Image(systemName: "xmark.circle.fill") }
                             .buttonStyle(.plain).foregroundStyle(.secondary)
+                            .accessibilityLabel("Borrar filtro")
                     }
                 }
                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -907,9 +886,9 @@ struct Dashboard: View {
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.hairline))
             }
             Text("\(visible.count) de \(model.observations.count) observaciones cargadas")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.label).foregroundStyle(.secondary)
             if model.observations.isEmpty {
-                ContentUnavailableView("No hay observaciones cargadas", systemImage: "waveform.path.ecg", description: Text("Toma una instantánea local para recolectar evidencia."))
+                ContentUnavailableView("No hay observaciones cargadas", systemImage: "waveform.path.ecg", description: Text("Toma una instantánea local desde Protección para recolectar evidencia."))
                     .padding(.top, 30)
             } else if visible.isEmpty {
                 ContentUnavailableView.search(text: filter).padding(.top, 30)
@@ -930,12 +909,12 @@ struct Dashboard: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: evidenceSymbol(item.kind)).foregroundStyle(.secondary).frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.summary)
-                    Text(item.entity).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+                    Text(item.summary).font(.bodyText)
+                    Text(item.entity).font(.mono).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 12)
-                Text(relativeTime(item.timestamp)).font(.caption).foregroundStyle(.tertiary)
+                Text(relativeTime(item.timestamp)).font(.small).foregroundStyle(.tertiary)
                     .help(fullTime(item.timestamp))
             }
             DisclosureGroup("Metadatos registrados") {
@@ -952,34 +931,29 @@ struct Dashboard: View {
                     }
                     Text("\(es(item.source)) · Evidencia \(item.id)").foregroundStyle(.tertiary)
                 }
-                .font(.system(.caption, design: .monospaced))
+                .font(.mono)
                 .foregroundStyle(.primary)
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.canvas, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .padding(.top, 4)
             }
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.small).foregroundStyle(.secondary)
             .padding(.leading, 26)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .textSelection(.enabled)
     }
 
-    // MARK: Investigations
+    // MARK: Informes
 
-    private var investigationList: some View {
-        TopAlertsPanel(model: model, openSignals: { selection = .alerts }, showOrb: { selection = nil }) { report in
-            investigationDetails(report)
-        }
-    }
-
-    /// Hipótesis, pasos y limitaciones: el detalle técnico que la barra de alertas mantiene plegado.
+    /// Hipótesis, pasos y limitaciones: el detalle técnico que la barra de informes mantiene plegado.
     private func investigationDetails(_ finding: Investigation) -> some View {
         VStack(alignment: .leading, spacing: 24) {
             if !finding.hypotheses.isEmpty {
                 subsection("Hipótesis") {
-                    ForEach(Array(finding.hypotheses.enumerated()), id: \.offset) { _, hypothesis in
+                    ForEach(Array(finding.hypotheses.enumerated()), id: \.offset) { index, hypothesis in
+                        if index > 0 { Hairline() }
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .top, spacing: 12) {
                                 Text(hypothesis.statement).reportItemTitle()
@@ -988,16 +962,14 @@ struct Dashboard: View {
                             }
                             if !hypothesis.counterevidence.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Contraevidencia").font(.caption.weight(.medium)).foregroundStyle(.tertiary)
+                                    Text("Contraevidencia").font(.system(size: 13, weight: .medium)).foregroundStyle(.tertiary)
                                     Text(hypothesis.counterevidence).reportBody()
                                 }
                             }
                             evidenceLinks(hypothesis.evidence_ids)
                         }
-                        .padding(14)
+                        .padding(.vertical, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.hairline))
                     }
                 }
             }
@@ -1007,9 +979,9 @@ struct Dashboard: View {
                         ForEach(Array(finding.steps.enumerated()), id: \.offset) { index, step in
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
                                 Text(String(format: "%02d", index + 1))
-                                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(.tertiary)
+                                    .font(.mono).foregroundStyle(.tertiary)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(es(step.tool)).font(.system(size: 12, weight: .medium, design: .monospaced))
+                                    Text(es(step.tool)).font(.system(size: 13, weight: .medium, design: .monospaced))
                                     Text(step.summary).reportBody()
                                 }
                             }
@@ -1033,33 +1005,47 @@ struct Dashboard: View {
         .textSelection(.enabled)
     }
 
-    /// Las referencias de evidencia saltan a la observación correspondiente en la línea de tiempo.
+    /// Las referencias de evidencia saltan a la observación correspondiente en Actividad.
     private func evidenceLinks(_ ids: [String]) -> some View {
         HStack(spacing: 6) {
             if ids.isEmpty {
-                Text("Sin evidencia citada").font(.caption).foregroundStyle(.tertiary)
+                Text("Sin evidencia citada").font(.small).foregroundStyle(.tertiary)
             }
             ForEach(ids.prefix(4), id: \.self) { id in
-                Button(String(id.prefix(8))) {
-                    filter = id
-                    kindFilter = nil
-                    selection = .observations
-                }
-                .buttonStyle(.plain)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Color.surface, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.hairline))
-                .help("Mostrar evidencia \(id)")
+                Button(String(id.prefix(8))) { inspect(id) }
+                    .buttonStyle(.plain)
+                    .font(.mono)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.hairline))
+                    .help("Mostrar evidencia \(id)")
+                    .accessibilityLabel("Mostrar evidencia \(id)")
             }
             if ids.count > 4 {
-                Text("+\(ids.count - 4) más").font(.caption).foregroundStyle(.tertiary)
+                Text("+\(ids.count - 4) más").font(.small).foregroundStyle(.tertiary)
                     .help(ids.dropFirst(4).joined(separator: "\n"))
             }
         }
     }
 }
+
+/// Fondo tenue al pasar el cursor por una fila de navegación no seleccionada.
+private struct NavRowHoverStyle: ButtonStyle {
+    let selected: Bool
+    @State private var hovered = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Color.white.opacity(!selected && hovered ? 0.05 : 0), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .onHover { hovered = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovered)
+    }
+}
+
+struct VerticalHairline: View {
+    var body: some View { Rectangle().fill(Color.white.opacity(0.1)).frame(width: 1) }
+}
+
 
 // MARK: Components
 
@@ -1070,8 +1056,8 @@ struct ProposalStatus: View {
     var body: some View {
         if let defense = action.action {
             if defense.type == "terminate_process" || defense.type == "quarantine_file" {
-                Text("Respuesta de IA: consulta el resultado en Señales → Historial de respuesta.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("Respuesta de IA: consulta el resultado en Actividad → Alertas → Historial de respuesta y cuarentena.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
             } else if defense.type == "block_peer", model.peerBlocked(defense.observation_id) {
                 Pill("Aplicada", .success)
             } else if defense.type == "block_peer", let observation = defense.observation_id {
@@ -1119,17 +1105,17 @@ struct ReportSectionTitle: View {
     let title: String
     init(_ title: String) { self.title = title }
     var body: some View {
-        Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
+        Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).accessibilityAddTraits(.isHeader)
     }
 }
 
 extension Text {
     func reportItemTitle() -> some View {
-        font(.system(size: 13, weight: .medium)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+        font(.system(size: 14, weight: .medium)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
     }
 
     func reportBody() -> some View {
-        font(.system(size: 12)).lineSpacing(3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        font(.system(size: 13)).lineSpacing(3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -1145,7 +1131,7 @@ struct Pill: View {
             StatusDot(color: color)
             Text(humanize(text))
         }
-        .font(.caption.weight(.medium)).foregroundStyle(color).lineLimit(1)
+        .font(.system(size: 12, weight: .medium)).foregroundStyle(color).lineLimit(1)
         .padding(.horizontal, 9).padding(.vertical, 5)
         .background(color.opacity(0.08), in: Capsule())
         .overlay(Capsule().strokeBorder(Color.hairline))
@@ -1211,7 +1197,8 @@ extension View {
     func card(padding: CGFloat = 16) -> some View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .modifier(EvidenceGlassSurface())
+            .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.1)))
     }
 
     func inputField() -> some View {

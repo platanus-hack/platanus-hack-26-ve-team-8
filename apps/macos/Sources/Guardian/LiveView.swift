@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Señales persistentes y pasos de investigación; una señal no confirma un compromiso.
+/// Alertas persistentes y pasos de investigación; una alerta no confirma un compromiso.
 struct LiveView: View {
     @Bindable var model: GuardianModel
     let openActivity: () -> Void
@@ -8,7 +8,7 @@ struct LiveView: View {
     let openReport: () -> Void
 
     private var investigating: Bool { model.investigating || model.progress?.active == true }
-    private var threats: [AgentObservation] { model.detections.filter { $0.kind != "process" } }
+    private var threats: [AgentAlert] { model.pendingAlerts }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -20,8 +20,8 @@ struct LiveView: View {
                 }
                 VStack(spacing: 18) { orbPanel; activityPanel }
             }
-            Label("El núcleo representa este Mac. Los puntos representan evidencia registrada, no conexiones en tiempo real. La ausencia de señales no garantiza seguridad.", systemImage: "info.circle")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Label("El núcleo representa este Mac. Los puntos representan evidencia registrada, no conexiones en tiempo real. La ausencia de alertas no garantiza seguridad.", systemImage: "info.circle")
+                .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if !investigating, let latest = model.investigations.first { verdictCard(latest) }
         }
     }
@@ -30,12 +30,12 @@ struct LiveView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Label("Tu espacio de investigación", systemImage: "viewfinder").font(.caption.weight(.medium)).foregroundStyle(Color.investigatorAccent)
+                    Label("Tu espacio de investigación", systemImage: "viewfinder").font(.system(size: 13, weight: .medium)).foregroundStyle(Color.investigatorAccent)
                     Text("¿Qué quieres entender de tu Mac?").font(.title3.weight(.semibold))
                 }
                 Spacer()
                 Button("Alertas principales", systemImage: "exclamationmark.shield", action: openReport)
-                    .buttonStyle(.plain).font(.caption).foregroundStyle(Color.info)
+                    .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Color.info)
             }
             if model.status?.onboarding_required == true {
                 Text("Puedes vigilar localmente sin IA. Conecta Claude cuando quieras investigar la evidencia.")
@@ -52,7 +52,7 @@ struct LiveView: View {
             HStack(spacing: 6) {
                 Image(systemName: "lock.shield")
                 Text("Preguntas → evidencia de solo lectura → conclusiones para revisar")
-            }.font(.caption2).foregroundStyle(.secondary)
+            }.font(.system(size: 12)).foregroundStyle(.secondary)
             Hairline()
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) { monitoringActions; Spacer(minLength: 0); investigationAction }
@@ -63,7 +63,7 @@ struct LiveView: View {
 
     @ViewBuilder private var investigationSuggestions: some View {
         ForEach(["Revisa las escuchas de red", "Explica los cambios recientes"], id: \.self) { question in
-            Button(question) { model.question = question }.buttonStyle(.plain).font(.caption).foregroundStyle(Color.info)
+            Button(question) { model.question = question }.buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Color.info)
         }
     }
 
@@ -87,35 +87,23 @@ struct LiveView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Label("Evidencia de este Mac", systemImage: "point.3.connected.trianglepath.dotted").font(.caption.weight(.medium)).foregroundStyle(Color.investigatorAccent)
+                    Label("Evidencia de este Mac", systemImage: "point.3.connected.trianglepath.dotted").font(.system(size: 13, weight: .medium)).foregroundStyle(Color.investigatorAccent)
                     HStack(spacing: 8) {
                         StatusDot(color: headline.color)
                         Text(headline.title).font(.title3.weight(.semibold))
                     }
-                    Text(headline.detail).font(.caption).foregroundStyle(.secondary)
+                    Text(headline.detail).font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Text("\(sceneState.nodes.count) nodos").font(.caption2.monospacedDigit()).foregroundStyle(Color.investigatorAccent)
+                Text("\(sceneState.nodes.count) nodos").font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.investigatorAccent)
                     .padding(.horizontal, 9).padding(.vertical, 5)
                     .background(Color.investigatorAccent.opacity(0.08), in: Capsule())
             }.padding(20)
             DefenseSceneView(state: sceneState)
                 .frame(height: 360)
                 .accessibilityLabel("Mapa tridimensional de la evidencia registrada")
-                .accessibilityValue("\(sceneState.nodes.count) nodos; \(threats.count) señales pendientes")
-                .overlay(alignment: .bottomLeading) {
-                    Label("Arrastra para girar · Desplaza para acercar", systemImage: "cursorarrow.motionlines")
-                        .font(.caption2).foregroundStyle(.white.opacity(0.45))
-                        .padding(.horizontal, 20).padding(.bottom, 12).allowsHitTesting(false)
-                }
+                .accessibilityValue("\(sceneState.nodes.count) nodos; \(threats.count) alertas pendientes")
             VStack(alignment: .leading, spacing: 12) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 14) { sceneLegend }
-                    VStack(alignment: .leading, spacing: 7) { sceneLegend }
-                }
-                Text("Parches rojos: señales por revisar · Dorado: evidencia citada por el investigador")
-                    .font(.caption2).foregroundStyle(.secondary)
-                Hairline()
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) { liveActions }
                     VStack(alignment: .leading, spacing: 8) { liveActions }
@@ -128,27 +116,14 @@ struct LiveView: View {
         .environment(\.colorScheme, .dark)
     }
 
-    @ViewBuilder private var sceneLegend: some View {
-        legendItem("Procesos", .info)
-        legendItem("Red", .cyan)
-        legendItem("LaunchAgents", .purple)
-        legendItem("Otras evidencias", .gray)
-    }
-
-    private func legendItem(_ title: String, _ color: Color) -> some View {
-        HStack(spacing: 5) { StatusDot(color: color); Text(title) }
-            .font(.caption2).foregroundStyle(.secondary)
-    }
-
     private var activityPanel: some View {
         VStack(alignment: .leading, spacing: 18) {
             claudeCard
             detectionsCard
             HStack {
-                Button("Ver señales", action: openActivity)
+                Button("Ver alertas", action: openActivity)
                 Spacer()
-                Button("Estado del Mac", action: openStatus)
-            }.buttonStyle(.plain).font(.caption).foregroundStyle(Color.info)
+            }.buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Color.info)
         }
     }
 
@@ -156,7 +131,7 @@ struct LiveView: View {
         Button("Renovar referencia", systemImage: "arrow.triangle.2.circlepath") { model.setBaseline() }
             .buttonStyle(ArkButton(prominent: false))
             .disabled(model.observations.isEmpty)
-            .help("Usar los procesos cargados como nueva referencia visual. No borra ni revisa las señales.")
+            .help("Usar los procesos cargados como nueva referencia visual. No borra ni revisa las alertas.")
         Button("Red, protección y cobertura", systemImage: "shield.lefthalf.filled", action: openStatus)
             .buttonStyle(ArkButton(prominent: false))
     }
@@ -169,48 +144,50 @@ struct LiveView: View {
             return ("Agente desconectado", "Inicia la vigilancia local para registrar evidencia.", .secondary)
         }
         if !threats.isEmpty {
-            return (threats.count == 1 ? "1 señal pendiente de revisión" : "\(threats.count) señales pendientes de revisión",
+            return (threats.count == 1 ? "1 alerta pendiente de revisión" : "\(threats.count) alertas pendientes de revisión",
                     "Cambios de archivos, firewall o escuchas para revisar.", .danger)
         }
-        return (status.monitoring ? "Vigilando este Mac" : "Monitoreo en pausa",
+        return (status.monitoring ? "Vigilando este Mac" : "Vigilancia en pausa",
                 status.monitoring ? "Registrando observaciones locales de solo lectura." : "La evidencia anterior sigue disponible.", status.monitoring ? .success : .warning)
     }
 
     // MARK: Cards
 
     private var detectionsCard: some View {
-        let detections = model.detections
-        let newProcesses = detections.count - threats.count
+        let newProcesses = model.detections.filter { $0.kind == "process" }.count
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Cambios para revisar").font(.headline)
+                Text("Alertas para revisar").font(.headline)
                 Spacer()
                 if let date = model.baselineDate {
-                    Text("desde las \(date.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.tertiary)
+                    Text("desde las \(date.formatted(date: .omitted, time: .shortened))").font(.system(size: 13)).foregroundStyle(.tertiary)
                 }
             }
             if threats.isEmpty {
-                Text("No hay señales pendientes en los datos cargados.").font(.callout).foregroundStyle(.secondary)
+                Text("No hay alertas pendientes en los datos cargados.").font(.callout).foregroundStyle(.secondary)
             }
-            ForEach(threats.prefix(6)) { item in
+            ForEach(Array(threats.prefix(6).enumerated()), id: \.element.id) { index, alert in
+                let copy = AlertCopy(alert)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    StatusDot(color: .danger)
+                    Text("\(index + 1)").font(.system(size: 13, weight: .semibold).monospacedDigit()).foregroundStyle(Color.danger)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(humanize(item.kind)).fontWeight(.medium)
-                        Text(item.entity).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(copy.title).fontWeight(.medium)
+                        Text(alert.after.entity).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.middle)
                     }
                     Spacer(minLength: 8)
-                    Text(relativeTime(item.timestamp)).font(.caption).foregroundStyle(.tertiary)
+                    Text(relativeTime(alert.created_at)).font(.system(size: 13)).foregroundStyle(.tertiary)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Alerta \(index + 1): \(copy.title), \(relativeTime(alert.created_at))")
                 .transition(.opacity)
             }
             if threats.count > 6 {
-                Text("+\(threats.count - 6) más").font(.caption).foregroundStyle(.tertiary)
+                Text("+\(threats.count - 6) más").font(.system(size: 13)).foregroundStyle(.tertiary)
             }
             if newProcesses > 0 {
                 Text("\(newProcesses) \(newProcesses == 1 ? "proceso nuevo" : "procesos nuevos") (incluye actividad normal)")
-                    .font(.caption).foregroundStyle(.tertiary)
+                    .font(.system(size: 13)).foregroundStyle(.tertiary)
             }
         }
         .animation(.snappy, value: threats.count)
@@ -234,14 +211,14 @@ struct LiveView: View {
                         Label("Contrasta hipótesis", systemImage: "point.3.connected.trianglepath.dotted")
                         Label("Presenta un informe con referencias", systemImage: "text.bubble")
                     }
-                    .font(.caption).foregroundStyle(.secondary).padding(.vertical, 10)
+                    .font(.system(size: 13)).foregroundStyle(.secondary).padding(.vertical, 10)
                     Label("Solo lectura · Sin acciones automáticas de defensa", systemImage: "lock.shield")
-                        .font(.caption2).foregroundStyle(.secondary)
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
             ForEach(Array(steps.suffix(5).enumerated()), id: \.offset) { _, step in
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(es(step.tool)).font(.system(.caption, design: .monospaced))
+                    Text(es(step.tool)).font(.system(size: 12, design: .monospaced))
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Color.canvas, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.hairline))
@@ -251,7 +228,7 @@ struct LiveView: View {
             }
             if !steps.isEmpty && !investigating {
                 Text("\(steps.count) \(steps.count == 1 ? "paso" : "pasos") de solo lectura · ningún comando ejecutado")
-                    .font(.caption).foregroundStyle(.tertiary)
+                    .font(.system(size: 13)).foregroundStyle(.tertiary)
             }
         }
         .animation(.snappy, value: steps.count)
@@ -262,7 +239,7 @@ struct LiveView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Pill(finding.status)
-                Text(relativeTime(finding.created_at)).font(.caption).foregroundStyle(.tertiary)
+                Text(relativeTime(finding.created_at)).font(.system(size: 13)).foregroundStyle(.tertiary)
                 Spacer()
                 Button("Informe completo", action: openReport).buttonStyle(ArkButton(prominent: false))
             }
@@ -292,6 +269,7 @@ struct LiveView: View {
         let cited = Set(model.progress?.steps.flatMap(\.evidence_ids)
             ?? model.investigations.first?.hypotheses.flatMap(\.evidence_ids) ?? [])
         let fresh = Set(model.detections.map(\.key))
+        let alertKeys = Set(threats.map(\.after.key))
         var seen = Set<String>()
         var processes = 0
         var nodes: [DefenseState.Node] = []
@@ -301,10 +279,14 @@ struct LiveView: View {
                 processes += 1
                 if processes > 120 && !cited.contains(item.id) { continue }
             }
-            let level: DefenseState.Level = cited.contains(item.id) ? .cited
-                : fresh.contains(item.key) ? (item.kind == "process" ? .fresh : .threat) : .normal
+            let level: DefenseState.Level = alertKeys.contains(item.key) ? .threat : cited.contains(item.id) ? .cited
+                : fresh.contains(item.key) ? .fresh : .normal
             nodes.append(.init(key: item.key, kind: item.kind, level: level))
         }
-        return DefenseState(nodes: nodes, investigating: investigating, alert: !threats.isEmpty)
+        // Same numbering as the list; alerts whose observation fell outside the loaded window still get a node.
+        // This page has no defense handler, so markers offer no action button.
+        return DefenseState(nodes: DefenseState.placing(threats, on: nodes) { _ in nil }, investigating: investigating,
+                            alert: !threats.isEmpty, connected: model.status != nil && model.alertsLoaded,
+                            monitoring: model.status?.monitoring ?? true)
     }
 }
