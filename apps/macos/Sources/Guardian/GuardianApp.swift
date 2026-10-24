@@ -112,7 +112,7 @@ final class GuardianModel {
             diagnosticLogger.info("Proveedor configurado en el agente.")
             if !restoring {
                 setupVisible = true
-                try ProviderKeychain.save(key)
+                if key != ProviderKeychain.demoKey { try ProviderKeychain.save(key) }
             }
             status = configuredStatus
             UserDefaults.standard.set(true, forKey: "guardian.localMonitoring")

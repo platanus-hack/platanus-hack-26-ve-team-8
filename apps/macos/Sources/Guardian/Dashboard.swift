@@ -395,10 +395,10 @@ struct Dashboard: View {
                 Text("Conecta tu investigador").font(.title2.weight(.semibold))
                 Text("Anthropic · Claude Haiku 5.5").font(.callout).foregroundStyle(.secondary)
             }
-            Text("Añade tu clave de API de Anthropic para activar las investigaciones. El agente valida el modelo antes de conectar.")
+            Text("Arkangel incluye una clave de API de Anthropic de demostración: pulsa Conectar para activar las investigaciones. Opcionalmente, usa tu propia clave.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
-            SecureField("Clave de API de Anthropic", text: $model.apiKey, prompt: Text("Clave de API de Anthropic"))
+            SecureField("Clave de API de Anthropic", text: $model.apiKey, prompt: Text("Clave de API de Anthropic (opcional; vacía usa la guardada o la de demostración)"))
                 .textFieldStyle(.plain).font(.system(.body, design: .monospaced))
                 .inputField()
                 .disabled(model.busy)

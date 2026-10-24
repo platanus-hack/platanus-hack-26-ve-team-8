@@ -6,6 +6,9 @@ import UserNotifications
 let diagnosticLogger = Logger(subsystem: "local.guardian.app", category: "diagnostics")
 
 struct ProviderKeychain {
+    // ponytail: demo-only key shipped inside the app binary; anyone with the .app can extract it. Remove for real releases.
+    static let demoKey = "PASTE_ANTHROPIC_API_KEY_HERE"
+
     private static var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "local.guardian.anthropic",
@@ -19,7 +22,8 @@ struct ProviderKeychain {
         var result: CFTypeRef?
         let status = SecItemCopyMatching(lookup as CFDictionary, &result)
         diagnosticLogger.info("Lectura del Llavero; estado=\(status, privacy: .public)")
-        if status == errSecItemNotFound { return nil }
+        // Sin clave propia guardada, se usa la clave de demostración incluida en la app.
+        if status == errSecItemNotFound { return demoKey }
         guard status == errSecSuccess, let data = result as? Data,
               let key = String(data: data, encoding: .utf8) else {
             throw ClientError(message: "No se pudo leer la clave guardada en el Llavero de macOS.")
