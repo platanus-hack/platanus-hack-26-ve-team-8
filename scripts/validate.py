@@ -4,7 +4,7 @@
 Habla el mismo protocolo que la app (packages/contracts/protocol.md) por el socket Unix.
 Nunca llama a defense.apply: los bloqueos se aprueban en la app y aquí solo se verifican.
 
-  python3 scripts/validate.py watch                     # muestra cada alerta nueva al llegar
+  python3 scripts/validate.py watch                     # telemetría de red y alertas en directo
   python3 scripts/validate.py drill ssh                 # espera la alerta, informa PASS/FAIL
   python3 scripts/validate.py drill postgres --investigate   # además pide una investigación (puede tener coste)
 """
@@ -77,17 +77,38 @@ def matches(alert, rule, port):
     return alert["signal"]["attributes"]["rule"] == rule and port in (None, after.get("local_port"), after.get("port"))
 
 
+def network(observation):
+    """Telemetría de red que importa en los simulacros: conexiones entrantes, intentos SSH y escuchas expuestas."""
+    a = observation["attributes"]
+    if observation["kind"] == "tcp_connection":
+        extra = f", {a['auth_failures']} fallos SSH" if "auth_failures" in a else ""
+        return f"{observation['source']}: {a.get('remote_address')} → {a.get('executable')} :{a.get('local_port')}{extra}"
+    if observation["kind"] == "tcp_listener" and a.get("bind_scope") in {"any", "interface"}:
+        return f"{observation['source']}: {a.get('executable')} escucha en {a.get('local_address')}"
+    return None
+
+
 def watch(sock):
     seen = {a["id"] for a in call(sock, "alerts")["items"]}
-    print("Vigilando alertas nuevas; Ctrl-C para salir.")
+    # Solo se registran observaciones nuevas o cambiadas, así que lo nuevo aquí es telemetría que cambió.
+    observed = {o["id"] for o in call(sock, "observations", limit=500)["items"]}
+    sources = {c["source"]: c["status"] for c in call(sock, "status")["coverage"]}
+    print("Cobertura: " + ", ".join(f"{k} {v}" for k, v in sources.items()))
+    print("Vigilando telemetría de red y alertas; Ctrl-C para salir.")
     while True:
         status = call(sock, "status")
         if not status["monitoring"]:
             print("Aviso: la vigilancia está en pausa; actívala en la app.")
+        for item in reversed(call(sock, "observations", limit=500)["items"]):
+            if item["id"] not in observed:
+                observed.add(item["id"])
+                line = network(item)
+                if line:
+                    print(f"{item['timestamp'][11:19]}  telemetría  {line}")
         for alert in reversed(call(sock, "alerts")["items"]):
             if alert["id"] not in seen:
                 seen.add(alert["id"])
-                print(f"{alert['created_at'][11:19]}  {describe(alert)}")
+                print(f"{alert['created_at'][11:19]}  ALERTA      {describe(alert)}")
         time.sleep(2)
 
 
