@@ -2,7 +2,7 @@
 
 <img src="./project-logo.png" alt="Logo de Arkangel" width="200" />
 
-Track: 🧊 Three-Dimensional
+Track: 🛡️ AI Security
 
 Investigador defensivo para macOS: observa tu Mac localmente, detecta cambios
 sospechosos y deja que Claude investigue con evidencia citada. Es un prototipo, no
