@@ -8,6 +8,7 @@ struct Coverage: Decodable, Identifiable, Sendable {
     let detail: String
 }
 struct AgentStatus: Decodable, Sendable {
+    let demo: DemoState?
     let protection: ProtectionState?
     let automation: AutomationState?
     let alerts: AlertCounts?
@@ -23,6 +24,14 @@ struct AgentStatus: Decodable, Sendable {
     let exposed: [ExposedPort]?
     let blocked_ports: [Int]?
     let blocked_peers: [String]?
+}
+struct DemoState: Decodable, Sendable {
+    let enabled: Bool
+    let session_id: String?
+    let directory: String?
+    let uploads_blocked: Bool
+    let config_state: String
+    let events: [AgentObservation]
 }
 struct ProtectionState: Decodable, Sendable {
     let enabled: Bool
@@ -161,6 +170,9 @@ struct AgentClient: Sendable {
     let path = ProcessInfo.processInfo.environment["GUARDIAN_SOCKET"] ?? "/tmp/guardian-\(getuid())/agent.sock"
 
     func status() async throws -> AgentStatus { try await request("status") }
+    func demo(_ operation: String, params: [String: any Sendable]) async throws -> AgentStatus {
+        try await request("demo." + operation, params: params)
+    }
     func protection(_ operation: String, params: [String: any Sendable]) async throws -> AgentStatus {
         try await request("protection." + operation, params: params)
     }

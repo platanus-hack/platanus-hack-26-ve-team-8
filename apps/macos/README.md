@@ -7,6 +7,11 @@ con acceso a Claude Haiku 5.5; la vigilancia local funciona sin clave.
 
 ## Desarrollo desde el código fuente
 
+Para la demo de Frame con archivos ficticios, detección de configuración y reparación
+local, consulta el [laboratorio guiado](../../docs/testing/desktop-agent-lab.md). Basta
+con `swift run Guardian` y el entorno `.venv` existente; no hace falta generar una
+app o un DMG. El laboratorio no requiere clave de modelo ni permiso de grabación.
+
 Desde la raíz del repositorio, prepara el agente una vez (solo desarrolladores):
 
 ```sh

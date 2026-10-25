@@ -78,6 +78,48 @@ class ServiceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.service.dispatch({"method": method})
 
+    def test_demo_requires_explicit_consent_and_rejects_untrusted_fields(self):
+        for request in (
+            {"method": "demo.prepare", "params": {"consent": False}},
+            {"method": "demo.prepare", "params": {}},
+            {"method": "demo.prepare", "params": {"consent": True, "directory": "/tmp/other"}},
+            {"method": "demo.repair", "params": {"session_id": "old", "consent": False}},
+            {"method": "demo.report", "params": {"session_id": "old", "event": "file_read", "content": "PRIVATE"}},
+        ):
+            with self.subTest(request=request), self.assertRaises(ValueError):
+                self.service.dispatch(request)
+        self.assertIsNone(self.service.demo.directory)
+        self.assertEqual(self.store.count(), 0)
+
+    def test_demo_config_is_checked_without_reports_and_never_reaches_ai(self):
+        status = self.service.dispatch({"method": "demo.prepare", "params": {"consent": True}})
+        config = Path(status["demo"]["directory"]) / "config.json"
+        config.write_text(json.dumps({"allow_uploads": True, "redact_secrets": False}))
+        status = self.service.scan()
+        self.assertEqual(status["demo"]["config_state"], "unsafe")
+        session = self.service.dispatch({"method": "demo.attach"})["session_id"]
+        self.assertTrue(self.service.dispatch({"method": "demo.report", "params": {
+            "session_id": session, "event": "upload_attempt"}})["allowed"])
+        self.assertTrue(any(item["source"] == "demo_lab" for item in self.store.observations(500)))
+        self.assertEqual(self.store.alert_counts(), {"unacknowledged": 2, "pending": 0})
+        self.assertEqual(self.store.alerts(pending=True), [])
+        captured = []
+
+        def investigate(observations, **kwargs):
+            captured.extend(observations)
+            return self.investigate(observations, **kwargs)
+
+        self.service.investigator = investigate
+        self.service.investigate()
+        self.assertTrue(captured)
+        self.assertFalse(any(item["source"] == "demo_lab" for item in captured))
+        with patch.object(self.service.demo, "repair") as repair:
+            self.service.dispatch({"method": "demo.repair", "params": {"session_id": session, "consent": True}})
+        repair.assert_called_once_with(session)
+        self.service.dispatch({"method": "demo.stop"})
+        with self.assertRaises(ValueError):
+            self.service.dispatch({"method": "demo.report", "params": {"session_id": session, "event": "file_read"}})
+
     def test_monitoring_requires_boolean_and_observations_bounded(self):
         with self.assertRaises(ValueError):
             self.service.dispatch({"method": "monitoring.set", "params": {"enabled": "true"}})

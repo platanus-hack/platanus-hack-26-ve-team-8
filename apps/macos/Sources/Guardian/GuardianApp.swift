@@ -3,6 +3,17 @@ import UserNotifications
 
 // Los valores del protocolo siguen en inglés; solo se traducen al mostrarlos.
 private let spanishLabels = [
+    "demo_lab": "Laboratorio local", "demo_activity": "Actividad declarada de demo", "demo_config": "Configuración de demo",
+    "safe": "Configuración segura de demo", "unsafe": "Configuración vulnerable de demo", "not_prepared": "Sin preparar",
+    "local_check": "Verificación local", "self_reported": "Declarado por Frame",
+    "prepared": "Laboratorio preparado", "file_read": "Lectura declarada", "upload_attempt": "Intento de envío declarado",
+    "upload_succeeded": "Envío completado declarado", "upload_blocked": "Envío detenido declarado",
+    "config_safe": "Configuración ficticia segura", "config_unsafe": "Configuración ficticia vulnerable",
+    "config_unavailable": "Configuración ficticia no verificable", "repair_attempt": "Reparación iniciada",
+    "repair_succeeded": "Reparación verificada", "repair_failed": "Reparación fallida", "stopped": "Laboratorio detenido",
+    "demo_config_unsafe": "Configuración ficticia vulnerable", "demo_file_read": "Lectura ficticia declarada",
+    "demo_upload_attempt": "Intento de envío ficticio declarado", "demo_upload_succeeded": "Envío ficticio declarado",
+    "demo_repair_failed": "Reparación de demo fallida",
     "file": "Archivo", "detection": "Alerta", "user_launch_files": "Archivos LaunchAgents del usuario",
     "system_launch_agents": "LaunchAgents del sistema", "system_launch_daemons": "LaunchDaemons del sistema",
     "shell_files": "Archivos de inicio del shell", "disabled": "Automatización desactivada",
@@ -196,6 +207,19 @@ final class GuardianModel {
             status = try await client.protection(operation, params: params)
             error = nil
         } catch { self.error = error.localizedDescription }
+    }
+
+    func demo(_ operation: String, params: [String: any Sendable] = [:]) async {
+        guard !busy else { return }
+        busy = true
+        var operationError: String?
+        do {
+            status = try await client.demo(operation, params: params)
+            error = nil
+        } catch { operationError = error.localizedDescription }
+        busy = false
+        await refresh()
+        if let operationError { error = operationError }
     }
 
     func perform(_ operation: String) async {

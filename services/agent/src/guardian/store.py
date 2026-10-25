@@ -228,16 +228,37 @@ class Store:
             for source in seen_sources:
                 db.execute("INSERT OR IGNORE INTO watch_sources VALUES (?)", (source,))
 
+    def record_demo_alert(self, after, rule, before=None):
+        rules = {"demo_config_unsafe", "demo_file_read", "demo_upload_attempt",
+                 "demo_upload_succeeded", "demo_repair_failed"}
+        attributes = after.get("attributes", {})
+        if type(rule) is not str or rule not in rules or after.get("source") != "demo_lab" or \
+                attributes.get("simulation") is not True or attributes.get("trust") not in {"local_check", "self_reported"}:
+            raise ValueError("La alerta no corresponde al laboratorio local.")
+        identifier = str(uuid.uuid4())
+        signal = {"id": identifier, "timestamp": after["timestamp"], "kind": "detection",
+                  "source": "demo_lab", "entity": after["entity"], "summary": after["summary"],
+                  "attributes": {"rule": rule, "change": "modified" if before else "created",
+                                 "simulation": True, "trust": attributes["trust"]}}
+        alert = {"id": identifier, "created_at": after["timestamp"], "reason": after["summary"],
+                 "signal": signal, "before": before, "after": after}
+        with self.connect() as db:
+            db.execute("INSERT INTO alerts(id, created_at, payload) VALUES (?, ?, ?)",
+                       (identifier, after["timestamp"], json.dumps(alert)))
+        return identifier
+
     def alerts(self, pending=False, limit=100):
         with self.connect() as db:
             rows = db.execute("SELECT payload, acknowledged, investigated FROM alerts " +
-                              ("WHERE investigated=0 " if pending else "") +
+                              ("WHERE investigated=0 AND COALESCE(json_extract(payload, '$.signal.source'), '') != 'demo_lab' " if pending else "") +
                               "ORDER BY created_at " + ("ASC" if pending else "DESC") + " LIMIT ?", (limit,)).fetchall()
         return [dict(json.loads(row[0]), acknowledged=bool(row[1]), investigated=bool(row[2])) for row in rows]
 
     def alert_counts(self):
         with self.connect() as db:
-            row = db.execute("SELECT COALESCE(SUM(acknowledged=0),0), COALESCE(SUM(investigated=0),0) FROM alerts").fetchone()
+            row = db.execute("""SELECT COALESCE(SUM(acknowledged=0),0),
+                COALESCE(SUM(investigated=0 AND COALESCE(json_extract(payload, '$.signal.source'), '') != 'demo_lab'),0)
+                FROM alerts""").fetchone()
         return {"unacknowledged": row[0], "pending": row[1]}
 
     def acknowledge(self, identifier):

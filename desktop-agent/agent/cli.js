@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Headless run, same code path as the app. Handy to test before demoing.
 //
-//   node agent/cli.js --url http://127.0.0.1:8787/collect --root ~/demo-fixtures
+//   node agent/cli.js --legacy --url http://127.0.0.1:8787/collect --root ~/demo-fixtures
 //
 const os = require("node:os");
 const path = require("node:path");
 const { createRunner } = require("./run");
+const { createDemoRunner } = require("./guardian-demo");
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, item, index, all) => {
@@ -25,13 +26,18 @@ const config = {
   scanBudgetMs: 20000,
 };
 
-const runner = createRunner(config, (event) => {
+const onEvent = (event) => {
   const badge = { thought: "..", tool: "->", found: "**", file: "  ", sent: "OK", error: "!!", done: "##" }[event.type] || "  ";
-  if (event.type === "found") console.log(`${badge} ${event.files.length} files`);
+  if (event.type === "found") console.log(`${badge} ${event.files.length} archivos`);
   else if (event.type === "tool") console.log(`${badge} ${event.name} ${JSON.stringify(event.args)}`);
   else if (event.type === "file") console.log(`${badge} ${event.file} (${event.bytes}b)`);
   else if (event.type === "sent") console.log(`${badge} ${event.file} [${event.status}]`);
   else console.log(`${badge} ${event.text || event.summary || ""}`);
-});
+};
+
+const runner = process.argv.includes("--legacy") && !process.argv.includes("--demo")
+  ? createRunner(config, onEvent) : createDemoRunner(onEvent);
+process.on("SIGINT", () => runner.stop());
+process.on("SIGTERM", () => runner.stop());
 
 runner.start();

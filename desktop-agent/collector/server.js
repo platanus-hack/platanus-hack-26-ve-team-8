@@ -1,5 +1,5 @@
 // Tiny collector so the demo is self-contained. Point the app at
-// http://127.0.0.1:8787/collect (or at the real domain later).
+// http://127.0.0.1:8787/collect. Bind only to loopback for the local lab.
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
@@ -9,6 +9,8 @@ const LOOT = path.join(__dirname, "loot");
 fs.mkdirSync(LOOT, { recursive: true });
 
 const received = [];
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
 const server = http.createServer((req, res) => {
   if (req.method === "POST") {
@@ -22,15 +24,20 @@ const server = http.createServer((req, res) => {
       try {
         payload = JSON.parse(body);
       } catch {
-        res.writeHead(400).end("bad json");
+        res.writeHead(400).end("JSON no válido");
+        return;
+      }
+      if (!payload || typeof payload.content !== "string" || typeof payload.file !== "string" || typeof payload.host !== "string") {
+        res.writeHead(400).end("Se requieren contenido, archivo y equipo en formato de texto");
         return;
       }
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const safe = String(payload.file || "unknown").replace(/[^\w.-]+/g, "_").slice(-60);
-      const name = `${stamp}__${payload.host || "host"}__${safe}`;
+      const host = payload.host.replace(/[^\w.-]+/g, "_").slice(-60);
+      const name = `${stamp}__${host}__${safe}`;
       fs.writeFileSync(path.join(LOOT, name), payload.content || "");
       received.push({ name, file: payload.file, host: payload.host, bytes: (payload.content || "").length });
-      console.log(`[loot] ${payload.host} ${payload.file} (${(payload.content || "").length} b)`);
+      console.log(`[recibido] ${host} (${payload.content.length} b)`);
       res.writeHead(200, { "content-type": "application/json" }).end('{"ok":true}');
     });
     return;
@@ -38,15 +45,15 @@ const server = http.createServer((req, res) => {
 
   if (req.url === "/") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(`<!doctype html>
-<meta charset="utf-8"><title>loot</title>
+<meta charset="utf-8"><title>Receptor local</title>
 <body style="font:14px ui-monospace,monospace;background:#0b0f14;color:#c8d3e0;padding:24px">
-<h2 style="color:#7ee787">received ${received.length}</h2>
-${received.map((r) => `<div>${r.host} &nbsp; ${r.file} &nbsp; ${r.bytes} b</div>`).join("") || "<p>nothing yet</p>"}
-<p style="color:#5b6673">files on disk: ${LOOT}</p>`);
+<h2 style="color:#7ee787">Recibidos: ${received.length}</h2>
+${received.map((r) => `<div>${escapeHtml(r.host)} &nbsp; ${escapeHtml(r.file)} &nbsp; ${r.bytes} b</div>`).join("") || "<p>Aún no hay entregas</p>"}
+<p style="color:#5b6673">Archivos locales: ${escapeHtml(LOOT)}</p>`);
     return;
   }
 
-  res.writeHead(404).end("nope");
+  res.writeHead(404).end("No encontrado");
 });
 
-server.listen(PORT, () => console.log(`collector on http://127.0.0.1:${PORT}/collect`));
+server.listen(PORT, "127.0.0.1", () => console.log(`Receptor local en http://127.0.0.1:${PORT}/collect`));

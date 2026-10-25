@@ -15,6 +15,7 @@ from .providers import provider_config
 from .diagnostics import logger
 from .onboarding import sdk_available, validate_key
 from .response import Response
+from .demo import DemoLab
 
 
 def default_socket() -> Path:
@@ -59,6 +60,7 @@ class GuardianService:
         self.defense_lock = threading.Lock()
         self.response_lock = threading.RLock()
         self.response = Response(store)
+        self.demo = DemoLab(store)
 
     def status(self):
         with self.lock:
@@ -70,6 +72,7 @@ class GuardianService:
                     provider_status += " (nube desactivada)"
             return {"monitoring": self.monitoring, "automation": self.automation_status(),
                     "protection": self.response.status(),
+                    "demo": self.demo.status(),
                     "alerts": self.store.alert_counts(), "last_file_scan": self.last_file_scan,
                     "provider": provider_status,
                     "onboarding_required": not provider.configured or (provider.name == "anthropic" and os.getenv("GUARDIAN_ALLOW_CLOUD") != "1"),
@@ -91,6 +94,7 @@ class GuardianService:
                 self.last_file_scan = datetime.now(timezone.utc).isoformat()
             coverage.extend(self.file_coverage)
             with self.lock:
+                self.demo.inspect()
                 self.store.detect(observations, coverage)
                 self.store.ingest(observations)
                 self.coverage = coverage
@@ -119,7 +123,9 @@ class GuardianService:
                     prioritized.extend(item for item in (alert["signal"], alert["before"], alert["after"]) if item)
                 records = {item["id"]: item for item in prioritized}
                 for item in self.store.observations(500):
-                    records.setdefault(item["id"], item)
+                    # Cooperative lab reports must never justify actions against real targets.
+                    if item.get("source") != "demo_lab":
+                        records.setdefault(item["id"], item)
                 observations = list(records.values())[:500]
                 coverage = list(self.coverage)
                 total = self.store.count()
@@ -156,6 +162,8 @@ class GuardianService:
         params = request.get("params", {})
         if not isinstance(params, dict):
             raise ValueError("params debe ser un objeto")
+        if isinstance(method, str) and method.startswith("demo."):
+            return self.dispatch_demo(method, params)
         if method == "alerts":
             limit = params.get("limit", 100)
             if type(limit) is not int or not 1 <= limit <= 500:
@@ -232,6 +240,26 @@ class GuardianService:
                     self.response.generation += 1
             return self.status()
         raise ValueError("Método desconocido")
+
+    def dispatch_demo(self, method, params):
+        fields = {"demo.prepare": {"consent"}, "demo.attach": set(), "demo.stop": set(),
+                  "demo.repair": {"session_id", "consent"}, "demo.report": {"session_id", "event"}}
+        if method not in fields or set(params) != fields[method]:
+            raise ValueError("Solicitud de laboratorio no válida; solo se admiten campos fijos.")
+        if method in {"demo.prepare", "demo.repair"} and params.get("consent") is not True:
+            raise ValueError("Confirma la creación o reparación de los archivos ficticios del laboratorio.")
+        with self.lock:
+            if method == "demo.attach":
+                return self.demo.attach()
+            if method == "demo.report":
+                return self.demo.report(params["session_id"], params["event"])
+            if method == "demo.prepare":
+                self.demo.prepare()
+            elif method == "demo.repair":
+                self.demo.repair(params["session_id"])
+            else:
+                self.demo.stop()
+            return self.status()
 
     def apply_defense(self, params):
         action, port = params.get("action"), params.get("port")

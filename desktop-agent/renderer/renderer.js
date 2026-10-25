@@ -25,6 +25,7 @@ function line(kind, text, extra) {
 function setRunning(on) {
   running = on;
   $("startBtn").hidden = on;
+  $("demoBtn").hidden = on;
   $("stopBtn").hidden = !on;
   $("startBtn").disabled = on;
 }
@@ -43,22 +44,23 @@ function handle(event) {
       break;
     case "found":
       bump("cFound", event.files.length);
-      line("file", `found ${event.files.length} candidate file(s)`);
+      line("file", `${event.files.length} archivos candidatos`);
       break;
     case "file":
-      line("file", `${event.file} · ${event.bytes}b${event.truncated ? " (truncated)" : ""}`, event.preview);
+      line("file", `${event.file} · ${event.bytes}b${event.truncated ? " (truncado)" : ""}`, event.preview);
       break;
     case "sent":
       bump("cSent", 1);
       line("sent", `→ ${event.file}  [${event.status}]`);
       break;
     case "error":
+    case "blocked":
       line("error", event.text);
       break;
     case "done":
       setRunning(false);
       $("banner").hidden = false;
-      $("bannerTitle").textContent = "exfiltrated";
+      $("bannerTitle").textContent = "Resultado";
       $("bannerBody").textContent = event.summary;
       line("sent", event.summary);
       break;
@@ -82,9 +84,9 @@ async function boot() {
   $("maxFiles").value = config.maxFiles;
 
   if (info.screenAccess === "granted") {
-    $("screenState").textContent = "screen access granted";
+    $("screenState").textContent = "Acceso a pantalla concedido";
   } else {
-    $("screenState").textContent = `screen permission: ${info.screenAccess}`;
+    $("screenState").textContent = "Falta permiso de grabación de pantalla";
     $("screenState").classList.add("warn");
     $("empty").hidden = false;
   }
@@ -104,21 +106,21 @@ async function boot() {
 function setCapturing(on) {
   capturing = on;
   $("live").classList.toggle("off", !on);
-  $("live").textContent = on ? "live" : "paused";
-  $("captureBtn").textContent = on ? "pause capture" : "resume capture";
+  $("live").textContent = on ? "En vivo" : "En pausa";
+  $("captureBtn").textContent = on ? "Pausar captura" : "Reanudar captura";
 }
 
 $("grantBtn").addEventListener("click", async () => {
   await window.ghost.requestPermission();
-  line("thought", "opened Privacy settings, watching for access…");
+  line("thought", "Se abrieron los ajustes de privacidad; esperando permiso…");
   const poll = setInterval(async () => {
     const info = await window.ghost.init();
     if (info.screenAccess === "granted") {
       clearInterval(poll);
-      $("screenState").textContent = "screen access granted";
+      $("screenState").textContent = "Acceso a pantalla concedido";
       $("screenState").classList.remove("warn");
       $("empty").hidden = true;
-      line("thought", "screen access granted. if the preview stays black, restart the app.");
+      line("thought", "Acceso concedido. Si la vista previa sigue negra, reinicia la app.");
     }
   }, 1500);
 });
@@ -141,7 +143,7 @@ $("saveBtn").addEventListener("click", async () => {
     maxFiles: Number($("maxFiles").value) || 6,
   });
   $("settings").close();
-  line("thought", "settings saved.");
+  line("thought", "Configuración guardada.");
 });
 
 $("resetBtn").addEventListener("click", () => {
@@ -152,8 +154,8 @@ $("resetBtn").addEventListener("click", () => {
   $("baseUrl").value = "https://api.openai.com/v1";
 });
 
-$("startBtn").addEventListener("click", async () => {
-  if (!config.exfilUrl) {
+async function launch(demo) {
+  if (!demo && !config.exfilUrl) {
     $("settings").showModal();
     return;
   }
@@ -162,14 +164,26 @@ $("startBtn").addEventListener("click", async () => {
   $("cFound").textContent = "0";
   $("cSent").textContent = "0";
   setRunning(true);
-  line("thought", `mode: ${config.mode} · endpoint: ${config.exfilUrl}`);
-  await window.ghost.start();
-});
+  line("thought", demo ? "Laboratorio Guardian: solo datos ficticios y receptor local. Prepara la sesión en Arkangel." : `Modo: ${config.mode} · Destino: ${config.exfilUrl}`);
+  try {
+    if (demo) await window.ghost.start();
+    else {
+      $("settings").close();
+      await window.ghost.legacy();
+    }
+  } catch {
+    setRunning(false);
+    line("error", "No se pudo iniciar. Comprueba que la ejecución anterior haya terminado.");
+  }
+}
+
+$("startBtn").addEventListener("click", () => launch(false));
+$("demoBtn").addEventListener("click", () => launch(true));
 
 $("stopBtn").addEventListener("click", async () => {
   await window.ghost.stop();
   setRunning(false);
-  line("error", "stopped by user.");
+  line("error", "Detenido por el usuario.");
 });
 
 boot();

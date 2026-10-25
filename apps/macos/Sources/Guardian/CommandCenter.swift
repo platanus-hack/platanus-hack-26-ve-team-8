@@ -59,6 +59,26 @@ struct CommandCenter: View {
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .modifier(EvidenceGlassSurface(radius: 16, accent: .commandAccent))
                 .padding(.horizontal, 26).padding(.top, geometry.size.height < 720 ? 8 : 18).padding(.bottom, 8)
+            if let demo = model.status?.demo, demo.directory != nil {
+                Button { open(.alerts) } label: {
+                    HStack {
+                        Image(systemName: "testtube.2")
+                        Text("Laboratorio local · \(es(demo.config_state))")
+                        Spacer()
+                        Text(demo.uploads_blocked ? "Envíos detenidos" : "Revisar y reparar")
+                    }
+                    .font(.callout).padding(12)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(demo.config_state == "unsafe" ? Color.warning : Color.commandAccent)
+                .modifier(EvidenceGlassSurface(radius: 12, accent: .commandAccent))
+                .padding(.horizontal, 26).padding(.bottom, 8)
+            }
+            if let status = model.status, status.demo == nil {
+                Label("El servicio conectado es anterior al laboratorio. Reinicia Arkangel y su servicio desde este checkout.", systemImage: "arrow.clockwise")
+                    .font(.caption).foregroundStyle(Color.warning)
+                    .padding(.horizontal, 26).padding(.bottom, 8)
+            }
             orbPresentation.frame(maxWidth: .infinity, minHeight: geometry.size.height < 720 ? 180 : 220, maxHeight: .infinity).layoutPriority(1)
             // Offered space before the orb so it keeps its full height, and shrinks only when the window is too short.
             alertBand.frame(minHeight: 130, maxHeight: Self.bandHeight).layoutPriority(2)
@@ -222,11 +242,13 @@ struct CommandCenter: View {
             selectedObservation = model.observations.first { $0.key == alert.after.key } ?? alert.after
         case .defend:
             guard let defense = AlertCopy(alert).defense, !model.busy, !applied(defense) else { return }
+            if defense.type == "review_demo" { open(.alerts); return }
             Task { await model.defend(defense.type, port: defense.port) }
         }
     }
 
     private func applied(_ defense: AlertCopy.Defense) -> Bool {
+        if defense.type == "review_demo" { return false }
         if defense.type == "block_port", let port = defense.port { return model.status?.blocked_ports?.contains(port) == true }
         return model.status?.firewall?.firewall_enabled == true
     }

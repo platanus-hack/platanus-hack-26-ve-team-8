@@ -165,6 +165,64 @@ metadatos numéricos ya permitidos. No recibe rutas, nombres privados, contenido
 huellas SHA-256. El modelo mantiene exclusivamente herramientas de evidencia de solo
 lectura; ninguna señal ni resultado autoriza remediación.
 
+## Laboratorio local cooperativo (opcional)
+
+`status.demo` es aditivo; clientes anteriores lo pueden omitir. Contiene
+`{enabled: bool, session_id: string|null, directory: string|null,
+uploads_blocked: bool, config_state: "not_prepared"|"safe"|"unsafe"|"unavailable",
+events: [Observation]}`. `events` conserva las últimas 12 entradas de esta sesión;
+el historial de metadatos usa la retención normal de observaciones. Un servicio
+reiniciado empieza con el laboratorio desactivado. Los estados seguro/vulnerable
+se refieren exclusivamente a su configuración ficticia, nunca al Mac completo.
+
+- `demo.prepare` recibe exclusivamente `{consent: true}` y devuelve status. Invalida
+  la sesión anterior y crea un directorio privado nuevo dentro de `<data-dir>/demo/`
+  con `.env` de contenido ficticio fijo y `config.json` inicialmente seguro.
+- `demo.attach` recibe `{}` y devuelve `{session_id: string, directory: string,
+  config_device: string, config_inode: string}`. Los últimos dos campos son números
+  decimales como texto para no perder precisión en JavaScript. Identifican el archivo
+  config original que Frame puede debilitar; no se acepta una sustitución de ese archivo.
+- `demo.report` recibe exclusivamente `{session_id: string, event: string}` con event
+  `file_read`, `upload_attempt`, `upload_succeeded` o `upload_blocked`. Rechaza otros
+  campos, contenido, rutas, PID, órdenes, sesiones anteriores y más de 100 informes por
+  sesión. Comprueba config localmente antes de registrar el informe y devuelve
+  `{allowed: bool}`. Solo permite envíos si el laboratorio sigue activo, no se ha
+  bloqueado y config tiene `allow_uploads: true` y `redact_secrets: false`.
+- `demo.repair` recibe exclusivamente `{session_id: string, consent: true}` y devuelve
+  status. Primero deniega envíos posteriores, después conserva config como
+  `config.before-repair.json` sin sobrescribir y publica valores fijos seguros
+  (`allow_uploads: false`, `redact_secrets: true`). Verifica el resultado. La ventana
+  sin config y cualquier fallo deniegan envíos; los archivos se conservan para revisión.
+- `demo.stop` recibe `{}` y devuelve status. Desactiva el laboratorio y su permiso
+  cooperativo sin borrar los archivos generados.
+
+Las observaciones usan source `demo_lab`, kind `demo_config` o `demo_activity`,
+`attributes.simulation: true`, un event enumerado y trust `local_check` o
+`self_reported`. Las comprobaciones de config incluyen solo sus booleanos validados
+y config_state; no almacenan contenido arbitrario. Los demás eventos locales son
+`prepared`, `config_safe`, `config_unsafe`, `config_unavailable`, `repair_attempt`,
+`repair_succeeded`, `repair_failed` y `stopped`. Ninguna solicitud acepta un objetivo
+de reparación elegido por Frame o un modelo.
+
+El cliente Frame del laboratorio verifica el marcador ficticio y la identidad original
+de config antes de cambiarlo. Solo envía bytes constantes a `127.0.0.1:8787/collect`,
+sin redirecciones ni llamadas a modelos. Comprueba el permiso antes de cada envío;
+una solicitud ya iniciada puede terminar. Un informe de envío no prueba su recepción.
+La comprobación de config también ocurre en las instantáneas, aunque no haya informes.
+Un archivo ilegible, inestable, enlazado, no propio, mayor de 4 KiB o con JSON fuera
+del formato fijo no autoriza envíos.
+
+Estos eventos se muestran en su panel de laboratorio y en Observaciones. La primera
+configuración vulnerable y cada primer informe de lectura, intento de envío, envío
+completado o reparación fallida crean una alerta por sesión con rule
+`demo_config_unsafe`, `demo_file_read`, `demo_upload_attempt`, `demo_upload_succeeded`
+o `demo_repair_failed`. Se incluyen en el contador sin revisar y en el orbe, con sus
+etiquetas de demo y confianza. Se mantienen fuera de `alerts(pending=True)`, del
+contador `alerts.pending` y del contexto de IA; no generan cargos automáticos ni
+habilitan acciones contra procesos o archivos reales. El laboratorio es una integración
+cooperativa, no auditoría del sistema operativo, bloqueo de salida general ni un cambio
+de los límites de `defense.py` o `response.py`.
+
 ## Respuesta guiada por IA (opcional)
 
 `status.protection` es aditivo: `{enabled: bool, remaining: int, events: [ResponseEvent]}`.

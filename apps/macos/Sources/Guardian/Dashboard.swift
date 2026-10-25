@@ -665,6 +665,7 @@ struct Dashboard: View {
         return VStack(alignment: .leading, spacing: 24) {
             if let status = model.status {
                 signalMonitoring(status)
+                if let demo = status.demo { DemoLabView(model: model, demo: demo) }
                 HStack(spacing: 12) {
                     metric("Sin revisar", (status.alerts?.unacknowledged ?? 0).formatted())
                     metric("Por investigar", (status.alerts?.pending ?? 0).formatted())
@@ -831,8 +832,14 @@ struct Dashboard: View {
             }
             Text(alert.signal.entity).font(.mono).foregroundStyle(.secondary)
                 .textSelection(.enabled).lineLimit(2).truncationMode(.middle)
-            Label(alert.investigated ? "Investigación completada" : "Pendiente de investigación", systemImage: alert.investigated ? "text.magnifyingglass" : "clock")
+            Label(alert.signal.source == "demo_lab" ? "Demo local · excluida de investigaciones de IA" :
+                alert.investigated ? "Investigación completada" : "Pendiente de investigación",
+                systemImage: alert.signal.source == "demo_lab" ? "testtube.2" : alert.investigated ? "text.magnifyingglass" : "clock")
                 .font(.label).foregroundStyle(.secondary)
+            if alert.signal.source == "demo_lab" {
+                Text("Revisa la evidencia y los controles de reparación en Laboratorio local con Frame, arriba.")
+                    .font(.label).foregroundStyle(.secondary)
+            }
             DisclosureGroup("Comparar evidencia del cambio") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Antes").font(.system(size: 13, weight: .semibold))

@@ -1,5 +1,9 @@
 # Testing Arkangel
 
+For the cooperative Frame `.env` read/send and generated-config repair demo, use the
+[local lab runbook](desktop-agent-lab.md). It runs from source without a packaged app
+or model key and distinguishes local config checks from Frame's reported activity.
+
 Arkangel es un **investigador defensivo** que observa procesos locales, escuchas TCP,
 el estado del firewall y metadatos de los LaunchAgents del usuario, y deja que un modelo
 investigue la evidencia registrada. Puede reducir la exposición de red

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { createRunner } = require("./agent/run");
+const { createDemoRunner } = require("./agent/guardian-demo");
 
 const DEFAULTS = {
   exfilUrl: "http://127.0.0.1:8787/collect",
@@ -77,10 +78,10 @@ async function shoot() {
       });
     }
   } catch (err) {
-    const text = err?.message || "no screen frames (grant Screen Recording)";
+    const text = err?.message || "No hay capturas; concede permiso de grabación de pantalla.";
     if (text !== lastCaptureError) {
       lastCaptureError = text;
-      win?.webContents.send("agent:event", { type: "error", text: `capture: ${text}` });
+      win?.webContents.send("agent:event", { type: "error", text: "No se pudo capturar la pantalla; revisa el permiso de grabación." });
     }
   }
 }
@@ -119,12 +120,18 @@ ipcMain.handle("capture:toggle", (_e, on) => {
   return capturing;
 });
 
-ipcMain.handle("agent:start", () => {
-  const config = loadConfig();
-  runner = createRunner(config, (event) => win?.webContents.send("agent:event", event));
-  runner.start();
+function launchRunner(demo) {
+  if (runner) throw new Error("Ya hay una ejecución activa; detenla antes de comenzar otra.");
+  const onEvent = (event) => win?.webContents.send("agent:event", event);
+  const current = demo ? createDemoRunner(onEvent) : createRunner(loadConfig(), onEvent);
+  runner = current;
+  current.start().finally(() => { if (runner === current) runner = null; });
   return true;
-});
+}
+
+ipcMain.handle("agent:start", () => launchRunner(true));
+ipcMain.handle("agent:demo", () => launchRunner(true));
+ipcMain.handle("agent:legacy", () => launchRunner(false));
 
 ipcMain.handle("agent:stop", () => {
   runner?.stop();
@@ -142,5 +149,8 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   stopCapture();
+  runner?.stop();
   if (process.platform !== "darwin") app.quit();
 });
+
+app.on("before-quit", () => runner?.stop());

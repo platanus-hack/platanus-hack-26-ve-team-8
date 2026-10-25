@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld("ghost", {
   saveConfig: (patch) => ipcRenderer.invoke("config:save", patch),
   toggleCapture: (on) => ipcRenderer.invoke("capture:toggle", on),
   start: () => ipcRenderer.invoke("agent:start"),
+  demo: () => ipcRenderer.invoke("agent:demo"),
+  legacy: () => ipcRenderer.invoke("agent:legacy"),
   stop: () => ipcRenderer.invoke("agent:stop"),
   open: (p) => ipcRenderer.invoke("shell:open", p),
   requestPermission: () => ipcRenderer.invoke("perm:request"),

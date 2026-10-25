@@ -1,6 +1,14 @@
 {
   "status": {
     "monitoring": true,
+    "demo": {
+      "enabled": false,
+      "session_id": null,
+      "directory": null,
+      "uploads_blocked": true,
+      "config_state": "not_prepared",
+      "events": []
+    },
     "provider": "anthropic / claude-haiku-5-5",
     "onboarding_required": false,
     "sdk_available": true,

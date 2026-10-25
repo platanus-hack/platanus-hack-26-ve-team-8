@@ -116,7 +116,9 @@ struct TopAlertsPanel<Details: View>: View {
     }
 
     @ViewBuilder private func defenseButton(_ defense: AlertCopy.Defense) -> some View {
-        if applied(defense) {
+        if defense.type == "review_demo" {
+            Button(defense.label) { model.showAlerts = true }.buttonStyle(CommandButton()).disabled(model.busy)
+        } else if applied(defense) {
             Label(defense.type == "block_peer" ? "Equipo bloqueado" : defense.type == "block_port" ? "Puerto bloqueado" : "Firewall activado", systemImage: "checkmark.shield")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.success)
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -128,6 +130,7 @@ struct TopAlertsPanel<Details: View>: View {
     }
 
     private func applied(_ defense: AlertCopy.Defense) -> Bool {
+        if defense.type == "review_demo" { return false }
         if defense.type == "block_peer" { return model.peerBlocked(defense.observation) }
         if defense.type == "block_port", let port = defense.port { return model.status?.blocked_ports?.contains(port) == true }
         return model.status?.firewall?.firewall_enabled == true
@@ -195,6 +198,7 @@ struct TopAlertsPanel<Details: View>: View {
     }
 
     private func stateText(_ alert: AgentAlert) -> String {
+        if alert.signal.source == "demo_lab" { return "demo local; excluida de investigaciones de IA" }
         if alert.investigated { return "el investigador ya lo revisó" }
         return model.investigating || model.progress?.active == true ? "el investigador lo está revisando" : "pendiente de revisar"
     }
@@ -371,6 +375,18 @@ struct AlertCopy {
         let rule = alert.signal.attributes["rule"]?.text
         let change = alert.signal.attributes["change"]?.text
         switch rule {
+        case "demo_config_unsafe", "demo_file_read", "demo_upload_attempt", "demo_upload_succeeded", "demo_repair_failed":
+            title = switch rule {
+            case "demo_config_unsafe": "Demo de Frame: configuración vulnerable detectada"
+            case "demo_file_read": "Demo de Frame: lectura de .env declarada"
+            case "demo_upload_attempt": "Demo de Frame: intento de envío declarado"
+            case "demo_upload_succeeded": "Demo de Frame: envío completado declarado"
+            default: "Demo de Frame: la reparación requiere revisión"
+            }
+            detail = alert.reason + " Solo datos ficticios. La configuración se comprueba localmente; las lecturas y envíos los declara Frame. Revisa el laboratorio para reparar y detener futuros envíos cooperativos."
+            short = "Frame · demo local"
+            priority = 0
+            defense = Defense(label: "Revisar laboratorio", type: "review_demo", port: nil)
         case "firewall_weakened":
             title = "El firewall de tu Mac se desactivó"
             detail = "El firewall o el modo sigiloso se apagó. Sin esa protección, otros equipos de la red pueden intentar conectarse a tu Mac con más facilidad. Si no lo apagaste tú, conviene volver a activarlo."

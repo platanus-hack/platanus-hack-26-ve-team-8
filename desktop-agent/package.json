@@ -8,7 +8,8 @@
     "postinstall": "node scripts/patch-plist.js",
     "start": "electron .",
     "collect": "node collector/server.js",
-    "agent:cli": "node agent/cli.js"
+    "agent:cli": "node agent/cli.js",
+    "demo": "node agent/cli.js --demo"
   },
   "devDependencies": {
     "electron": "^45.0.0",
