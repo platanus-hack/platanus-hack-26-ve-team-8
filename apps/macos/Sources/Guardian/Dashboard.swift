@@ -676,8 +676,8 @@ struct Dashboard: View {
             }
             VStack(alignment: .leading, spacing: 16) {
                 ViewThatFits(in: .horizontal) {
-                    HStack { signalInboxTitle; Spacer(); signalFilter }
-                    VStack(alignment: .leading, spacing: 12) { signalInboxTitle; signalFilter }
+                    HStack(spacing: 16) { signalInboxTitle; Spacer(); triageButton; signalFilter }
+                    VStack(alignment: .leading, spacing: 12) { signalInboxTitle; HStack(spacing: 16) { triageButton; signalFilter } }
                 }
                 if visible.isEmpty {
                     VStack(spacing: 12) {
@@ -708,6 +708,23 @@ struct Dashboard: View {
             Text("Bandeja de alertas").font(.heading).accessibilityAddTraits(.isHeader)
             Text("Un cambio es un motivo para revisar, no una confirmación de compromiso.")
                 .font(.label).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Manual triage: the service already prioritizes every pending alert, so only the question is fixed here.
+    @ViewBuilder private var triageButton: some View {
+        let running = model.investigating || model.progress?.active == true
+        if model.status?.onboarding_required == true {
+            Button("Conectar investigador", systemImage: "sparkles") { model.setupVisible = true }
+                .buttonStyle(ArkButton()).fixedSize()
+        } else {
+            Button(running ? "Investigando…" : "Investigar alertas", systemImage: "sparkles") {
+                show(.live)
+                Task { await model.investigate("Clasifica las alertas pendientes de más a menos urgente. Para cada una indica si parece un cambio esperable o sospechoso, cita la evidencia y propone el siguiente paso.") }
+            }
+            .buttonStyle(ArkButton()).fixedSize()
+            .disabled(model.busy || running || model.status == nil || (model.status?.alerts?.pending ?? 0) == 0)
+            .help("El investigador revisa las alertas pendientes con su evidencia y crea un informe. Solo consulta evidencia; no cambia nada.")
         }
     }
 

@@ -360,12 +360,12 @@ final class GuardianModel {
     }
 
     // Separado de busy para que el estado se siga actualizando durante una solicitud al modelo.
-    func investigate() async {
+    func investigate(_ prompt: String? = nil) async {
         guard !investigating else { return }
         investigating = true
         defer { investigating = false }
         do {
-            let result = try await client.investigate(question)
+            let result = try await client.investigate(prompt ?? question)
             investigations.removeAll { $0.id == result.id }
             investigations.insert(result, at: 0)
             investigationsVersion += 1
