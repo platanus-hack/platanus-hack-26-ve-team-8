@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 
-const REPO = 'https://github.com/chrisdadev13/arkangel'
+const REPO = 'https://github.com/platanus-hack/platanus-hack-26-ve-team-8'
 // Stable link to the newest release asset; publish new builds with the same file name.
 const DOWNLOAD = `${REPO}/releases/latest/download/Arkangel.dmg`
 
@@ -108,7 +108,7 @@ function Home() {
         <h2>Para el jurado</h2>
         <p>Ejecuta el código fuente en tres pasos:</p>
         <pre>
-          <code>{`git clone ${REPO} && cd arkangel
+          <code>{`git clone ${REPO} arkangel && cd arkangel
 bash scripts/setup-agent.sh
 cd apps/macos && swift run Guardian`}</code>
         </pre>
