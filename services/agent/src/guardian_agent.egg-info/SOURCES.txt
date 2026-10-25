@@ -3,9 +3,12 @@ src/guardian/__init__.py
 src/guardian/__main__.py
 src/guardian/claude_runtime.py
 src/guardian/defense.py
+src/guardian/demo.py
+src/guardian/diagnostics.py
 src/guardian/investigator.py
 src/guardian/onboarding.py
 src/guardian/providers.py
+src/guardian/response.py
 src/guardian/service.py
 src/guardian/store.py
 src/guardian/surveillance.py
@@ -19,8 +22,11 @@ src/guardian_agent.egg-info/top_level.txt
 tests/test_anthropic.py
 tests/test_contract.py
 tests/test_defense.py
+tests/test_demo.py
+tests/test_diagnostics.py
 tests/test_investigator.py
 tests/test_onboarding.py
+tests/test_response.py
 tests/test_service.py
 tests/test_surveillance.py
 tests/test_telemetry.py

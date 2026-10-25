@@ -64,7 +64,7 @@ Para publicarlo en la web, sube el DMG como release; el botón de descarga apunt
 `releases/latest/download/Arkangel.dmg`, así que conserva ese nombre de archivo:
 
 ```sh
-gh release create v0.5.0 .guardian/Arkangel.dmg --title "Arkangel 0.5.0"
+gh release create v0.6.0 .guardian/Arkangel.dmg --title "Arkangel 0.6.0"
 ```
 
 ## Organización del espacio de trabajo
