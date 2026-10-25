@@ -1,6 +1,6 @@
 # Arkangel — team-8 Platanus Hack 26: Caracas ft. Yummy
 
-<img src="./project-logo.png" alt="Logo de Arkangel" width="200" />
+<img width="200" height="200" alt="5109498463937826029" src="https://github.com/user-attachments/assets/57bba73f-fc65-4be6-bd80-e489e5cf404f" />
 
 Track: 🛡️ AI Security
 
