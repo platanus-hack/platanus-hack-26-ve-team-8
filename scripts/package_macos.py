@@ -57,8 +57,8 @@ def package(root: Path, runtime: Path):
                 "CFBundleExecutable": "Guardian", "CFBundleDevelopmentRegion": "es",
                 "CFBundleIdentifier": "local.guardian.app", "CFBundleName": "Arkangel",
                 "CFBundleDisplayName": "Arkangel", "CFBundlePackageType": "APPL",
-                "CFBundleIconFile": "AppIcon.icns", "CFBundleVersion": "5",
-                "CFBundleShortVersionString": "0.5.0", "LSMinimumSystemVersion": "15.0",
+                "CFBundleIconFile": "AppIcon.icns", "CFBundleVersion": "6",
+                "CFBundleShortVersionString": "0.6.0", "LSMinimumSystemVersion": "15.0",
                 "NSHighResolutionCapable": True,
             }, stream)
         # Sign nested native libraries and the SDK CLI before sealing the outer app.
